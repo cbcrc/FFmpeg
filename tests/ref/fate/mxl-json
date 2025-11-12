@@ -1,0 +1,1041 @@
+testing mxl_json: jsmn based MXL resource definition parser
+
+sanity test:
+{"array_a": [0,1,2,3],"object_a": {"a": 1, "b": [0,1,2,3], "c": {"x": "y"} },"grain_rate": {"numerator": 25, "denominator": 1},"format": {"name": "video"},"media_type": "video/v210","frame_width": 1920,"array_b": [{"m": n, "o": [4,5,6]}, "p", ["q",7,{"r":8}]],"object_b": {"s": [9,"t",true], "u": {"v":{"w":10}}},"a_null": null,"a_true": true,"a_false": false,"array_c": [0, "one", {"three": "four"}],"negnums": {"a": -1.23, "b": -.123},"expnums": {"a": 1.23e2, "b": 1.23e+2, "c": 1.23e-2},"object_c": {"last": "final"},"ctrl_char": {"text":"line1\nline2"}}
+idx:     type str end  sz
+000:     objc 000 557 016 '{"array_a": [0,1,2,3],"object_a": {"a": 1, "b": [0,1,2,3], "c": {"x": "y"} },"grain_rate": {"numerator": 25, "denominator": 1},"format": {"name": "video"},"media_type": "video/v210","frame_width": 1920,"array_b": [{"m": n, "o": [4,5,6]}, "p", ["q",7,{"r":8}]],"object_b": {"s": [9,"t",true], "u": {"v":{"w":10}}},"a_null": null,"a_true": true,"a_false": false,"array_c": [0, "one", {"three": "four"}],"negnums": {"a": -1.23, "b": -.123},"expnums": {"a": 1.23e2, "b": 1.23e+2, "c": 1.23e-2},"object_c": {"last": "final"},"ctrl_char": {"text":"line1\nline2"}}'
+001:     strn 002 009 001 'array_a'
+002:     arry 012 021 004 '[0,1,2,3]'
+003:     prim 013 014 000 '0'
+004:     prim 015 016 000 '1'
+005:     prim 017 018 000 '2'
+006:     prim 019 020 000 '3'
+007:     strn 023 031 001 'object_a'
+008:     objc 034 076 003 '{"a": 1, "b": [0,1,2,3], "c": {"x": "y"} }'
+009:     strn 036 037 001 'a'
+010:     prim 040 041 000 '1'
+011:     strn 044 045 001 'b'
+012:     arry 048 057 004 '[0,1,2,3]'
+013:     prim 049 050 000 '0'
+014:     prim 051 052 000 '1'
+015:     prim 053 054 000 '2'
+016:     prim 055 056 000 '3'
+017:     strn 060 061 001 'c'
+018:     objc 064 074 001 '{"x": "y"}'
+019:     strn 066 067 001 'x'
+020:     strn 071 072 000 'y'
+021:     strn 078 088 001 'grain_rate'
+022:     objc 091 126 002 '{"numerator": 25, "denominator": 1}'
+023:     strn 093 102 001 'numerator'
+024:     prim 105 107 000 '25'
+025:     strn 110 121 001 'denominator'
+026:     prim 124 125 000 '1'
+027:     strn 128 134 001 'format'
+028:     objc 137 154 001 '{"name": "video"}'
+029:     strn 139 143 001 'name'
+030:     strn 147 152 000 'video'
+031:     strn 156 166 001 'media_type'
+032:     strn 170 180 000 'video/v210'
+033:     strn 183 194 001 'frame_width'
+034:     prim 197 201 000 '1920'
+035:     strn 203 210 001 'array_b'
+036:     arry 213 259 003 '[{"m": n, "o": [4,5,6]}, "p", ["q",7,{"r":8}]]'
+037:     objc 214 236 002 '{"m": n, "o": [4,5,6]}'
+038:     strn 216 217 001 'm'
+039:     prim 220 221 000 'n'
+040:     strn 224 225 001 'o'
+041:     arry 228 235 003 '[4,5,6]'
+042:     prim 229 230 000 '4'
+043:     prim 231 232 000 '5'
+044:     prim 233 234 000 '6'
+045:     strn 239 240 000 'p'
+046:     arry 243 258 003 '["q",7,{"r":8}]'
+047:     strn 245 246 000 'q'
+048:     prim 248 249 000 '7'
+049:     objc 250 257 001 '{"r":8}'
+050:     strn 252 253 001 'r'
+051:     prim 255 256 000 '8'
+052:     strn 261 269 001 'object_b'
+053:     objc 272 312 002 '{"s": [9,"t",true], "u": {"v":{"w":10}}}'
+054:     strn 274 275 001 's'
+055:     arry 278 290 003 '[9,"t",true]'
+056:     prim 279 280 000 '9'
+057:     strn 282 283 000 't'
+058:     prim 285 289 000 'true'
+059:     strn 293 294 001 'u'
+060:     objc 297 311 001 '{"v":{"w":10}}'
+061:     strn 299 300 001 'v'
+062:     objc 302 310 001 '{"w":10}'
+063:     strn 304 305 001 'w'
+064:     prim 307 309 000 '10'
+065:     strn 314 320 001 'a_null'
+066:     prim 323 327 000 'null'
+067:     strn 329 335 001 'a_true'
+068:     prim 338 342 000 'true'
+069:     strn 344 351 001 'a_false'
+070:     prim 354 359 000 'false'
+071:     strn 361 368 001 'array_c'
+072:     arry 371 400 003 '[0, "one", {"three": "four"}]'
+073:     prim 372 373 000 '0'
+074:     strn 376 379 000 'one'
+075:     objc 382 399 001 '{"three": "four"}'
+076:     strn 384 389 001 'three'
+077:     strn 393 397 000 'four'
+078:     strn 402 409 001 'negnums'
+079:     objc 412 436 002 '{"a": -1.23, "b": -.123}'
+080:     strn 414 415 001 'a'
+081:     prim 418 423 000 '-1.23'
+082:     strn 426 427 001 'b'
+083:     prim 430 435 000 '-.123'
+084:     strn 438 445 001 'expnums'
+085:     objc 448 489 003 '{"a": 1.23e2, "b": 1.23e+2, "c": 1.23e-2}'
+086:     strn 450 451 001 'a'
+087:     prim 454 460 000 '1.23e2'
+088:     strn 463 464 001 'b'
+089:     prim 467 474 000 '1.23e+2'
+090:     strn 477 478 001 'c'
+091:     prim 481 488 000 '1.23e-2'
+092:     strn 491 499 001 'object_c'
+093:     objc 502 519 001 '{"last": "final"}'
+094:     strn 504 508 001 'last'
+095:     strn 512 517 000 'final'
+096:     strn 521 530 001 'ctrl_char'
+097:     objc 533 556 001 '{"text":"line1\nline2"}'
+098:     strn 535 539 001 'text'
+099:     strn 542 554 000 'line1\nline2'
+PASS "media_type" = {"video/v210", SUCCESS}
+PASS "format.name" = {"video", SUCCESS}
+PASS "object_c.last" = {"final", SUCCESS}
+PASS "frame_width" = {1920, SUCCESS}
+PASS "grain_rate.numerator" = {25, SUCCESS}
+PASS "grain_rate.denominator" = {1, SUCCESS}
+PASS "object_a.a" = {1, SUCCESS}
+PASS "object_b.u.v.w" = {10, SUCCESS}
+PASS "negnums.a" = {-1.23, SUCCESS}
+PASS "negnums.b" = {-0.123, SUCCESS}
+PASS "expnums.a" = {123, SUCCESS}
+PASS "expnums.b" = {123, SUCCESS}
+PASS "expnums.c" = {0.0123, SUCCESS}
+PASS "ctrl_char.text" = {"line1\nline2", SUCCESS}
+PASS "a_null" = {nan, MXL_JSON_NULL}
+PASS "a_null" = {"(null)", MXL_JSON_NULL}
+PASS "a_true" = {nan, MXL_JSON_EBADTYPE}
+PASS "a_false" = {nan, MXL_JSON_EBADTYPE}
+PASS "a_false" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "a_true" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "format.name" = {nan, MXL_JSON_EBADTYPE}
+PASS "grain_rate.numerator" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "array_a" = {nan, MXL_JSON_EBADTYPE}
+PASS "array_b" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "does_not_exist" = {nan, MXL_JSON_ENOTFOUND}
+PASS "does.not_exist" = {nan, MXL_JSON_ENOTFOUND}
+PASS "blah" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "blah.yadda" = {"(null)", MXL_JSON_ENOTFOUND}
+
+abberant input tests:
+
+START abberant test: invalid_empty
+
+idx:     type str end  sz
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: invalid_empty
+
+START abberant test: valid_empty_object
+{}
+idx:     type str end  sz
+000:     objc 000 002 000 '{}'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_empty_object
+
+START abberant test: valid_empty_array
+[]
+idx:     type str end  sz
+000:     arry 000 002 000 '[]'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_empty_array
+
+START abberant test: valid_empty_string
+""
+idx:     type str end  sz
+000:     strn 001 001 000 ''
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_empty_string
+
+START abberant test: valid_single_number
+123.346
+idx:     type str end  sz
+000:     prim 000 007 000 '123.346'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_number
+
+START abberant test: valid_single_neg_number
+-123.346
+idx:     type str end  sz
+000:     prim 000 008 000 '-123.346'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_neg_number
+
+START abberant test: valid_single_exp_number
+1.23346e2
+idx:     type str end  sz
+000:     prim 000 009 000 '1.23346e2'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_exp_number
+
+START abberant test: valid_single_true
+true
+idx:     type str end  sz
+000:     prim 000 004 000 'true'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_true
+
+START abberant test: valid_single_false
+false
+idx:     type str end  sz
+000:     prim 000 005 000 'false'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_false
+
+START abberant test: valid_single_null
+null
+idx:     type str end  sz
+000:     prim 000 004 000 'null'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: valid_single_null
+
+START abberant test: misspelled_single_null
+nul
+idx:     type str end  sz
+000:     prim 000 003 000 'nul'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: misspelled_single_null
+
+START abberant test: invalid_leading_plus
+{"a": +123.346}
+idx:     type str end  sz
+000:     objc 000 015 001 '{"a": +123.346}'
+001:     strn 002 003 001 'a'
+002:     prim 006 014 000 '+123.346'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: invalid_leading_plus
+
+START abberant test: invalid_exp_number
+{"a": 1.23346e}
+idx:     type str end  sz
+000:     objc 000 015 001 '{"a": 1.23346e}'
+001:     strn 002 003 001 'a'
+002:     prim 006 014 000 '1.23346e'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: invalid_exp_number
+
+START abberant test: invalid_number_sep
+{"a": 1,23346}
+idx:     type str end  sz
+000:     objc 000 014 002 '{"a": 1,23346}'
+001:     strn 002 003 001 'a'
+002:     prim 006 007 000 '1'
+003:     prim 008 013 000 '23346'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: invalid_number_sep
+
+START abberant test: not_json
+this is totally wrong
+idx:     type str end  sz
+000:     prim 000 004 000 'this'
+001:     prim 005 007 000 'is'
+002:     prim 008 015 000 'totally'
+003:     prim 016 021 000 'wrong'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: not_json
+
+START abberant test: missing_key_quotes
+{foo: "bar"}
+idx:     type str end  sz
+000:     objc 000 012 001 '{foo: "bar"}'
+001:     prim 001 004 001 'foo'
+002:     strn 007 010 000 'bar'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: missing_key_quotes
+
+START abberant test: single_quotes
+{'foo': 'bar'}
+idx:     type str end  sz
+000:     objc 000 014 001 '{'foo': 'bar'}'
+001:     prim 001 006 001 ''foo''
+002:     prim 008 013 000 ''bar''
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: single_quotes
+
+START abberant test: trailing_comma_object
+{ "foo": "bar", }
+idx:     type str end  sz
+000:     objc 000 017 001 '{ "foo": "bar", }'
+001:     strn 003 006 001 'foo'
+002:     strn 010 013 000 'bar'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: trailing_comma_object
+
+START abberant test: trailing_comma_array
+[ "a", "b", ]
+idx:     type str end  sz
+000:     arry 000 013 002 '[ "a", "b", ]'
+001:     strn 003 004 000 'a'
+002:     strn 008 009 000 'b'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: trailing_comma_array
+
+START abberant test: dangling_key
+{"foo":}
+idx:     type str end  sz
+000:     objc 000 008 001 '{"foo":}'
+001:     strn 002 005 000 'foo'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: dangling_key
+
+START abberant test: abnormal_termination
+{"foo": "bar"} what's this?
+idx:     type str end  sz
+000:     objc 000 014 001 '{"foo": "bar"}'
+001:     strn 002 005 001 'foo'
+002:     strn 009 012 000 'bar'
+003:     prim 015 021 000 'what's'
+004:     prim 022 027 000 'this?'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: abnormal_termination
+
+START abberant test: unescaped_ctl_char
+{ "text": "line1
+line2" }
+idx:     type str end  sz
+000:     objc 000 025 001 '{ "text": "line1
+line2" }'
+001:     strn 003 007 001 'text'
+002:     strn 011 022 000 'line1
+line2'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: unescaped_ctl_char
+
+START abberant test: missing_both_braces
+"foo": "bar"
+idx:     type str end  sz
+000:     strn 001 004 001 'foo'
+001:     strn 008 011 000 'bar'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS abberant: missing_both_braces
+
+START abberant test: missing_start_brace
+json_doc_build failed
+PASS expected build error: AVERROR_INVALIDDATA (AVERROR_INVALIDDATA)
+PASS abberant: missing_start_brace
+
+START abberant test: missing_end_brace
+json_doc_build failed
+PASS expected build error: AVERROR_INVALIDDATA (AVERROR_INVALIDDATA)
+PASS abberant: missing_end_brace
+
+START abberant test: misspelled_contained_null
+{"misspelled_null": nul}
+idx:     type str end  sz
+000:     objc 000 024 001 '{"misspelled_null": nul}'
+001:     strn 002 017 001 'misspelled_null'
+002:     prim 020 023 000 'nul'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS "misspelled_null" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "misspelled_null" = {nan, MXL_JSON_EBADTYPE}
+PASS abberant: misspelled_contained_null
+
+START abberant test: capital_contained_null
+{"capital_null": NULL}
+idx:     type str end  sz
+000:     objc 000 022 001 '{"capital_null": NULL}'
+001:     strn 002 014 001 'capital_null'
+002:     prim 017 021 000 'NULL'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS "capital_null" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "capital_null" = {nan, MXL_JSON_EBADTYPE}
+PASS abberant: capital_contained_null
+
+START abberant test: unquoted_literal
+{"what": yes }
+idx:     type str end  sz
+000:     objc 000 014 001 '{"what": yes }'
+001:     strn 002 006 001 'what'
+002:     prim 009 012 000 'yes'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS "what" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "what" = {nan, MXL_JSON_EBADTYPE}
+PASS abberant: unquoted_literal
+
+START abberant test: nan_value
+{"value": NaN }
+idx:     type str end  sz
+000:     objc 000 015 001 '{"value": NaN }'
+001:     strn 002 007 001 'value'
+002:     prim 010 013 000 'NaN'
+PASS "absent" = {"(null)", MXL_JSON_ENOTFOUND}
+PASS "absent" = {nan, MXL_JSON_ENOTFOUND}
+PASS "value" = {"(null)", MXL_JSON_EBADTYPE}
+PASS "value" = {nan, MXL_JSON_EBADTYPE}
+PASS abberant: nan_value
+
+START abberant test: inf_values
+{"a":Infinity,"b":-Infinity,"c":Inf, "d":-Inf}
+idx:     type str end  sz
+000:     objc 000 046 004 '{"a":Infinity,"b":-Infinity,"c":Inf, "d":-Inf}'
+001:     strn 002 003 001 'a'
+002:     prim 005 013 000 'Infinity'
+003:     strn 015 016 001 'b'
+004:     prim 018 027 000 '-Infinity'
+005:     strn 029 030 001 'c'
+006:     prim 032 035 000 'Inf'
+007:     strn 038 039 001 'd'
+008:     prim 041 045 000 '-Inf'
+PASS "a" = {inf, MXL_JSON_EBADTYPE}
+PASS "b" = {-inf, MXL_JSON_EBADTYPE}
+PASS "c" = {inf, MXL_JSON_EBADTYPE}
+PASS "d" = {-inf, MXL_JSON_EBADTYPE}
+PASS abberant: inf_values
+
+START abberant test: valid_overflow_pos_number
+{"a": 1e400}
+idx:     type str end  sz
+000:     objc 000 012 001 '{"a": 1e400}'
+001:     strn 002 003 001 'a'
+002:     prim 006 011 000 '1e400'
+PASS "a" = {inf, ERANGE}
+PASS abberant: valid_overflow_pos_number
+
+START abberant test: valid_overflow_neg_number
+{"a": -1e400}
+idx:     type str end  sz
+000:     objc 000 013 001 '{"a": -1e400}'
+001:     strn 002 003 001 'a'
+002:     prim 006 012 000 '-1e400'
+PASS "a" = {-inf, ERANGE}
+PASS abberant: valid_overflow_neg_number
+
+START abberant test: valid_underflow_pos_number
+{"a": 1e-400}
+idx:     type str end  sz
+000:     objc 000 013 001 '{"a": 1e-400}'
+001:     strn 002 003 001 'a'
+002:     prim 006 012 000 '1e-400'
+PASS "a" = {0, ERANGE}
+PASS abberant: valid_underflow_pos_number
+
+START abberant test: valid_underflow_neg_number
+{"a": -1e-400}
+idx:     type str end  sz
+000:     objc 000 014 001 '{"a": -1e-400}'
+001:     strn 002 003 001 'a'
+002:     prim 006 013 000 '-1e-400'
+PASS "a" = {-0, ERANGE}
+PASS abberant: valid_underflow_neg_number
+
+non C locale number tests:
+test comma_dec_a
+{ "comma_dec_a": 3,14 }
+idx:     type str end  sz
+000:     objc 000 023 002 '{ "comma_dec_a": 3,14 }'
+001:     strn 003 014 001 'comma_dec_a'
+002:     prim 017 018 000 '3'
+003:     prim 019 021 000 '14'
+PASS comma_dec_a identified as malformed
+test comma_dec_b
+{ "comma_dec_b": 0,001 }
+idx:     type str end  sz
+000:     objc 000 024 002 '{ "comma_dec_b": 0,001 }'
+001:     strn 003 014 001 'comma_dec_b'
+002:     prim 017 018 000 '0'
+003:     prim 019 022 000 '001'
+PASS comma_dec_b identified as malformed
+test dot_thou_a
+{ "dot_thou_a": 1.234,56 }
+idx:     type str end  sz
+000:     objc 000 026 002 '{ "dot_thou_a": 1.234,56 }'
+001:     strn 003 013 001 'dot_thou_a'
+002:     prim 016 021 000 '1.234'
+003:     prim 022 024 000 '56'
+PASS dot_thou_a identified as malformed
+test dot_thou_b
+{ "dot_thou_b": 12.345,67 }
+idx:     type str end  sz
+000:     objc 000 027 002 '{ "dot_thou_b": 12.345,67 }'
+001:     strn 003 013 001 'dot_thou_b'
+002:     prim 016 022 000 '12.345'
+003:     prim 023 025 000 '67'
+PASS dot_thou_b identified as malformed
+test comma_thou_a
+{ "comma_thou_a": 1,234.56 }
+idx:     type str end  sz
+000:     objc 000 028 002 '{ "comma_thou_a": 1,234.56 }'
+001:     strn 003 015 001 'comma_thou_a'
+002:     prim 018 019 000 '1'
+003:     prim 020 026 000 '234.56'
+PASS comma_thou_a identified as malformed
+test comma_thou_b
+{ "comma_thou_b": 12,345.67 }
+idx:     type str end  sz
+000:     objc 000 029 002 '{ "comma_thou_b": 12,345.67 }'
+001:     strn 003 015 001 'comma_thou_b'
+002:     prim 018 020 000 '12'
+003:     prim 021 027 000 '345.67'
+PASS comma_thou_b identified as malformed
+test space_thou_a
+{ "space_thou_a": 1 234,56 }
+idx:     type str end  sz
+000:     objc 000 028 002 '{ "space_thou_a": 1 234,56 }'
+001:     strn 003 015 002 'space_thou_a'
+002:     prim 018 019 000 '1'
+003:     prim 020 023 000 '234'
+004:     prim 024 026 000 '56'
+PASS space_thou_a identified as malformed
+test space_thou_b
+{ "space_thou_b": 1 234.56 }
+idx:     type str end  sz
+000:     objc 000 028 001 '{ "space_thou_b": 1 234.56 }'
+001:     strn 003 015 002 'space_thou_b'
+002:     prim 018 019 000 '1'
+003:     prim 020 026 000 '234.56'
+PASS space_thou_b identified as malformed
+test nbsp_thou_a
+PASS expected NOPARSE and parse did not succeed
+test nbsp_thou_b
+PASS expected NOPARSE and parse did not succeed
+test thin_thou_a
+PASS expected NOPARSE and parse did not succeed
+test thin_thou_b
+PASS expected NOPARSE and parse did not succeed
+test swiss_thou_a
+{ "swiss_thou_a": 1'234,56 }
+idx:     type str end  sz
+000:     objc 000 028 002 '{ "swiss_thou_a": 1'234,56 }'
+001:     strn 003 015 001 'swiss_thou_a'
+002:     prim 018 023 000 '1'234'
+003:     prim 024 026 000 '56'
+PASS swiss_thou_a identified as malformed
+test swiss_thou_b
+{ "swiss_thou_b": 1'234.56 }
+idx:     type str end  sz
+000:     objc 000 028 001 '{ "swiss_thou_b": 1'234.56 }'
+001:     strn 003 015 001 'swiss_thou_b'
+002:     prim 018 026 000 '1'234.56'
+PASS swiss_thou_b identified as malformed
+test arabic_314
+PASS expected NOPARSE and parse did not succeed
+test arabic_1234
+PASS expected NOPARSE and parse did not succeed
+
+real world MXL test:
+{
+  "description": "MXL Test File",
+  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
+  "tags": {},
+  "format": "urn:x-nmos:format:video",
+  "label": "MXL Test File",
+  "parents": [],
+  "media_type": "video/v210",
+  "grain_rate": {
+    "numerator": 50,
+    "denominator": 1
+  },
+  "frame_width": 1920,
+  "frame_height": 1080,
+  "colorspace": "BT709",
+  "components": [
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]
+}
+
+idx:     type str end  sz
+000:     objc 000 662 012 '{
+  "description": "MXL Test File",
+  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
+  "tags": {},
+  "format": "urn:x-nmos:format:video",
+  "label": "MXL Test File",
+  "parents": [],
+  "media_type": "video/v210",
+  "grain_rate": {
+    "numerator": 50,
+    "denominator": 1
+  },
+  "frame_width": 1920,
+  "frame_height": 1080,
+  "colorspace": "BT709",
+  "components": [
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]
+}'
+001:     strn 005 016 001 'description'
+002:     strn 020 033 000 'MXL Test File'
+003:     strn 039 041 001 'id'
+004:     strn 045 081 000 '5fbec3b1-1b0f-417d-9059-8b94a47197ef'
+005:     strn 087 091 001 'tags'
+006:     objc 094 096 000 '{}'
+007:     strn 101 107 001 'format'
+008:     strn 111 134 000 'urn:x-nmos:format:video'
+009:     strn 140 145 001 'label'
+010:     strn 149 162 000 'MXL Test File'
+011:     strn 168 175 001 'parents'
+012:     arry 178 180 000 '[]'
+013:     strn 185 195 001 'media_type'
+014:     strn 199 209 000 'video/v210'
+015:     strn 215 225 001 'grain_rate'
+016:     objc 228 275 002 '{
+    "numerator": 50,
+    "denominator": 1
+  }'
+017:     strn 235 244 001 'numerator'
+018:     prim 247 249 000 '50'
+019:     strn 256 267 001 'denominator'
+020:     prim 270 271 000 '1'
+021:     strn 280 291 001 'frame_width'
+022:     prim 294 298 000 '1920'
+023:     strn 303 315 001 'frame_height'
+024:     prim 318 322 000 '1080'
+025:     strn 327 337 001 'colorspace'
+026:     strn 341 346 000 'BT709'
+027:     strn 352 362 001 'components'
+028:     arry 365 660 003 '[
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]'
+029:     objc 371 462 004 '{
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+030:     strn 380 384 001 'name'
+031:     strn 388 389 000 'Y'
+032:     strn 399 404 001 'width'
+033:     prim 407 411 000 '1920'
+034:     strn 420 426 001 'height'
+035:     prim 429 433 000 '1080'
+036:     strn 442 451 001 'bit_depth'
+037:     prim 454 456 000 '10'
+038:     objc 468 559 004 '{
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+039:     strn 477 481 001 'name'
+040:     strn 485 487 000 'Cb'
+041:     strn 497 502 001 'width'
+042:     prim 505 508 000 '960'
+043:     strn 517 523 001 'height'
+044:     prim 526 530 000 '1080'
+045:     strn 539 548 001 'bit_depth'
+046:     prim 551 553 000 '10'
+047:     objc 565 656 004 '{
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+048:     strn 574 578 001 'name'
+049:     strn 582 584 000 'Cr'
+050:     strn 594 599 001 'width'
+051:     prim 602 605 000 '960'
+052:     strn 614 620 001 'height'
+053:     prim 623 627 000 '1080'
+054:     strn 636 645 001 'bit_depth'
+055:     prim 648 650 000 '10'
+PASS "id" = {"5fbec3b1-1b0f-417d-9059-8b94a47197ef", SUCCESS}
+PASS "label" = {"MXL Test File", SUCCESS}
+PASS "media_type" = {"video/v210", SUCCESS}
+PASS "format" = {"urn:x-nmos:format:video", SUCCESS}
+PASS "colorspace" = {"BT709", SUCCESS}
+PASS "grain_rate.numerator" = {50, SUCCESS}
+PASS "grain_rate.denominator" = {1, SUCCESS}
+PASS "frame_width" = {1920, SUCCESS}
+PASS "frame_height" = {1080, SUCCESS}
+
+token_capacity test:
+parse with token capacity initial=2 max=8192
+{
+  "description": "MXL Test File",
+  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
+  "tags": {},
+  "format": "urn:x-nmos:format:video",
+  "label": "MXL Test File",
+  "parents": [],
+  "media_type": "video/v210",
+  "grain_rate": {
+    "numerator": 50,
+    "denominator": 1
+  },
+  "frame_width": 1920,
+  "frame_height": 1080,
+  "colorspace": "BT709",
+  "components": [
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]
+}
+
+idx:     type str end  sz
+000:     objc 000 662 012 '{
+  "description": "MXL Test File",
+  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
+  "tags": {},
+  "format": "urn:x-nmos:format:video",
+  "label": "MXL Test File",
+  "parents": [],
+  "media_type": "video/v210",
+  "grain_rate": {
+    "numerator": 50,
+    "denominator": 1
+  },
+  "frame_width": 1920,
+  "frame_height": 1080,
+  "colorspace": "BT709",
+  "components": [
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]
+}'
+001:     strn 005 016 001 'description'
+002:     strn 020 033 000 'MXL Test File'
+003:     strn 039 041 001 'id'
+004:     strn 045 081 000 '5fbec3b1-1b0f-417d-9059-8b94a47197ef'
+005:     strn 087 091 001 'tags'
+006:     objc 094 096 000 '{}'
+007:     strn 101 107 001 'format'
+008:     strn 111 134 000 'urn:x-nmos:format:video'
+009:     strn 140 145 001 'label'
+010:     strn 149 162 000 'MXL Test File'
+011:     strn 168 175 001 'parents'
+012:     arry 178 180 000 '[]'
+013:     strn 185 195 001 'media_type'
+014:     strn 199 209 000 'video/v210'
+015:     strn 215 225 001 'grain_rate'
+016:     objc 228 275 002 '{
+    "numerator": 50,
+    "denominator": 1
+  }'
+017:     strn 235 244 001 'numerator'
+018:     prim 247 249 000 '50'
+019:     strn 256 267 001 'denominator'
+020:     prim 270 271 000 '1'
+021:     strn 280 291 001 'frame_width'
+022:     prim 294 298 000 '1920'
+023:     strn 303 315 001 'frame_height'
+024:     prim 318 322 000 '1080'
+025:     strn 327 337 001 'colorspace'
+026:     strn 341 346 000 'BT709'
+027:     strn 352 362 001 'components'
+028:     arry 365 660 003 '[
+    {
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    },
+    {
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }
+  ]'
+029:     objc 371 462 004 '{
+      "name": "Y",
+      "width": 1920,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+030:     strn 380 384 001 'name'
+031:     strn 388 389 000 'Y'
+032:     strn 399 404 001 'width'
+033:     prim 407 411 000 '1920'
+034:     strn 420 426 001 'height'
+035:     prim 429 433 000 '1080'
+036:     strn 442 451 001 'bit_depth'
+037:     prim 454 456 000 '10'
+038:     objc 468 559 004 '{
+      "name": "Cb",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+039:     strn 477 481 001 'name'
+040:     strn 485 487 000 'Cb'
+041:     strn 497 502 001 'width'
+042:     prim 505 508 000 '960'
+043:     strn 517 523 001 'height'
+044:     prim 526 530 000 '1080'
+045:     strn 539 548 001 'bit_depth'
+046:     prim 551 553 000 '10'
+047:     objc 565 656 004 '{
+      "name": "Cr",
+      "width": 960,
+      "height": 1080,
+      "bit_depth": 10
+    }'
+048:     strn 574 578 001 'name'
+049:     strn 582 584 000 'Cr'
+050:     strn 594 599 001 'width'
+051:     prim 602 605 000 '960'
+052:     strn 614 620 001 'height'
+053:     prim 623 627 000 '1080'
+054:     strn 636 645 001 'bit_depth'
+055:     prim 648 650 000 '10'
+PASS "id" = {"5fbec3b1-1b0f-417d-9059-8b94a47197ef", SUCCESS}
+PASS "label" = {"MXL Test File", SUCCESS}
+PASS "media_type" = {"video/v210", SUCCESS}
+PASS "format" = {"urn:x-nmos:format:video", SUCCESS}
+PASS "colorspace" = {"BT709", SUCCESS}
+PASS "grain_rate.numerator" = {50, SUCCESS}
+PASS "grain_rate.denominator" = {1, SUCCESS}
+PASS "frame_width" = {1920, SUCCESS}
+PASS "frame_height" = {1080, SUCCESS}
+PASS token capacity "low non zero initial capacity"
+parse with token capacity initial=1 max=2
+PASS expected build error AVERROR(ENOMEM) (-12)
+PASS token capacity "exceed max capacity"
+parse with token capacity initial=2 max=2
+PASS expected build error AVERROR(ENOMEM) (-12)
+PASS token capacity "initial equal to max"
+parse with token capacity initial=0 max=8192
+PASS expected build error AVERROR(EINVAL) (-22)
+PASS token capacity "zero initial capacity"
+parse with token capacity initial=2 max=1
+PASS expected build error AVERROR(EINVAL) (-22)
+PASS token capacity "initial greater than max"
+parse with token capacity initial=1 max=0
+PASS expected build error AVERROR(EINVAL) (-22)
+PASS token capacity "zero max capacity"
+
+limit tests:
+PASS MXL_JSON_MAX_NUMBER_CHARS test match
+
+START limit test: number_over_conversion_limit
+{"too_long":11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111}
+idx:     type str end  sz
+000:     objc 000 141 001 '{"too_long":11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111}'
+001:     strn 002 010 001 'too_long'
+002:     prim 012 140 000 '11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111'
+PASS "too_long" = {nan, MXL_JSON_UNSUPPORTED}
+PASS limit: number_over_conversion_limit
+
+START limit test: number_under_conversion_limit
+{"not_too_long":1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111}
+idx:     type str end  sz
+000:     objc 000 144 001 '{"not_too_long":1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111}'
+001:     strn 002 014 001 'not_too_long'
+002:     prim 016 143 000 '1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111'
+PASS "not_too_long" = {1.111111111111111e+126, SUCCESS}
+PASS limit: number_under_conversion_limit
+PASS MXL_JSON_MAX_DEPTH test match
+
+START limit test: object_depth_over_limit
+{"accessible_a": 1,"too_deep":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}}},"inaccessible_b": 3}
+idx:     type str end  sz
+000:     objc 000 148 003 '{"accessible_a": 1,"too_deep":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}}},"inaccessible_b": 3}'
+001:     strn 002 014 001 'accessible_a'
+002:     prim 017 018 000 '1'
+003:     strn 020 028 001 'too_deep'
+004:     objc 030 127 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}}}'
+005:     strn 032 033 001 'a'
+006:     objc 035 126 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}}'
+007:     strn 037 038 001 'a'
+008:     objc 040 125 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}'
+009:     strn 042 043 001 'a'
+010:     objc 045 124 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}'
+011:     strn 047 048 001 'a'
+012:     objc 050 123 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}'
+013:     strn 052 053 001 'a'
+014:     objc 055 122 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}'
+015:     strn 057 058 001 'a'
+016:     objc 060 121 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}'
+017:     strn 062 063 001 'a'
+018:     objc 065 120 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}'
+019:     strn 067 068 001 'a'
+020:     objc 070 119 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}'
+021:     strn 072 073 001 'a'
+022:     objc 075 118 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}'
+023:     strn 077 078 001 'a'
+024:     objc 080 117 001 '{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}'
+025:     strn 082 083 001 'a'
+026:     objc 085 116 001 '{"a":{"a":{"a":{"a":{"a":2}}}}}'
+027:     strn 087 088 001 'a'
+028:     objc 090 115 001 '{"a":{"a":{"a":{"a":2}}}}'
+029:     strn 092 093 001 'a'
+030:     objc 095 114 001 '{"a":{"a":{"a":2}}}'
+031:     strn 097 098 001 'a'
+032:     objc 100 113 001 '{"a":{"a":2}}'
+033:     strn 102 103 001 'a'
+034:     objc 105 112 001 '{"a":2}'
+035:     strn 107 108 001 'a'
+036:     prim 110 111 000 '2'
+037:     strn 129 143 001 'inaccessible_b'
+038:     prim 146 147 000 '3'
+PASS "accessible_a" = {1, SUCCESS}
+PASS "too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {nan, MXL_JSON_UNSUPPORTED}
+PASS "inaccessible_b" = {nan, MXL_JSON_ENOTFOUND}
+PASS limit: object_depth_over_limit
+
+START limit test: object_depth_under_limit
+{"accessible_a": 1,"not_too_deep":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}},"accessible_b": 3}
+idx:     type str end  sz
+000:     objc 000 144 003 '{"accessible_a": 1,"not_too_deep":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}},"accessible_b": 3}'
+001:     strn 002 014 001 'accessible_a'
+002:     prim 017 018 000 '1'
+003:     strn 020 032 001 'not_too_deep'
+004:     objc 034 125 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}}'
+005:     strn 036 037 001 'a'
+006:     objc 039 124 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}}'
+007:     strn 041 042 001 'a'
+008:     objc 044 123 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}}'
+009:     strn 046 047 001 'a'
+010:     objc 049 122 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}}'
+011:     strn 051 052 001 'a'
+012:     objc 054 121 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}}'
+013:     strn 056 057 001 'a'
+014:     objc 059 120 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}}'
+015:     strn 061 062 001 'a'
+016:     objc 064 119 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}}'
+017:     strn 066 067 001 'a'
+018:     objc 069 118 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}}'
+019:     strn 071 072 001 'a'
+020:     objc 074 117 001 '{"a":{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}}'
+021:     strn 076 077 001 'a'
+022:     objc 079 116 001 '{"a":{"a":{"a":{"a":{"a":{"a":2}}}}}}'
+023:     strn 081 082 001 'a'
+024:     objc 084 115 001 '{"a":{"a":{"a":{"a":{"a":2}}}}}'
+025:     strn 086 087 001 'a'
+026:     objc 089 114 001 '{"a":{"a":{"a":{"a":2}}}}'
+027:     strn 091 092 001 'a'
+028:     objc 094 113 001 '{"a":{"a":{"a":2}}}'
+029:     strn 096 097 001 'a'
+030:     objc 099 112 001 '{"a":{"a":2}}'
+031:     strn 101 102 001 'a'
+032:     objc 104 111 001 '{"a":2}'
+033:     strn 106 107 001 'a'
+034:     prim 109 110 000 '2'
+035:     strn 127 139 001 'accessible_b'
+036:     prim 142 143 000 '3'
+PASS "accessible_a" = {1, SUCCESS}
+PASS "not_too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {2, SUCCESS}
+PASS "too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {nan, MXL_JSON_UNSUPPORTED}
+PASS "accessible_b" = {3, SUCCESS}
+PASS limit: object_depth_under_limit
+
+PASS

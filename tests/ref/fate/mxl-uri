@@ -1,0 +1,1176 @@
+testing mxl_uri: mxl URI parser
+
+==== test case: zero_id
+URI: "mxl://host1.local/domain/path"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+==== test case: zero_id PASS
+==== test case: one_id
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: one_id PASS
+==== test case: two_id
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: two_id PASS
+==== test case: three_id
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&id=2b528ffe-c94c-454f-984a-35c98c717006"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (3):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+    [2] "2b528ffe-c94c-454f-984a-35c98c717006"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (3):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+    [2] "2b528ffe-c94c-454f-984a-35c98c717006"
+}
+==== test case: three_id PASS
+==== test case: two_id_upcase
+URI: "MXL://HOST1.LOCAL/DOMAIN/PATH?id=3645F1E2-90FC-49CB-AF9C-236C2AC124CD&id=876FC244-9C99-48A8-A461-927E43A05BDC"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "HOST1.LOCAL"
+  port: -1
+  domain: "/DOMAIN/PATH"
+  flow_ids (2):
+    [0] "3645F1E2-90FC-49CB-AF9C-236C2AC124CD"
+    [1] "876FC244-9C99-48A8-A461-927E43A05BDC"
+}
+actual URI:
+mxl_uri {
+  host: "HOST1.LOCAL"
+  port: -1
+  domain: "/DOMAIN/PATH"
+  flow_ids (2):
+    [0] "3645F1E2-90FC-49CB-AF9C-236C2AC124CD"
+    [1] "876FC244-9C99-48A8-A461-927E43A05BDC"
+}
+==== test case: two_id_upcase PASS
+==== test case: two_id_upcase_key
+URI: "mxl://host1.local/domain/path?ID=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: two_id_upcase_key PASS
+==== test case: unknown_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&unknown=unknown&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: unknown_query_param PASS
+==== test case: unknown_flag_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&empty&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: unknown_flag_query_param PASS
+==== test case: ipv4
+URI: "mxl://10.1.2.3:5000/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "10.1.2.3"
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1"
+    [1] "5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+}
+actual URI:
+mxl_uri {
+  host: "10.1.2.3"
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1"
+    [1] "5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+}
+==== test case: ipv4 PASS
+==== test case: ipv6
+URI: "mxl://[2001:db8::2]/domain/path?id=1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92&id=3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "2001:db8::2"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92"
+    [1] "3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+}
+actual URI:
+mxl_uri {
+  host: "2001:db8::2"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92"
+    [1] "3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+}
+==== test case: ipv6 PASS
+==== test case: ipv6_with_port
+URI: "mxl://[2001:db8::2]:5000/domain/path?id=1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92&id=3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "2001:db8::2"
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92"
+    [1] "3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+}
+actual URI:
+mxl_uri {
+  host: "2001:db8::2"
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "1e9c4c74-6c44-4f7d-b8a3-3e4f9a4e8a92"
+    [1] "3fbcf2a1-2e8a-4a4d-9c8f-0d7e4a6b7c51"
+}
+==== test case: ipv6_with_port PASS
+==== test case: valid_negative_one_port
+URI: "mxl://10.1.2.3:-1/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "10.1.2.3"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1"
+    [1] "5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+}
+actual URI:
+mxl_uri {
+  host: "10.1.2.3"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1"
+    [1] "5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+}
+==== test case: valid_negative_one_port PASS
+==== test case: only_unknown_query_param
+URI: "mxl://host1.local/domain/path?foo=bar&baz=qux"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+==== test case: only_unknown_query_param PASS
+==== test case: local_domain_triple_slash
+URI: "mxl:///domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: local_domain_triple_slash PASS
+==== test case: local_domain_single_slash
+URI: "mxl:/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: local_domain_single_slash PASS
+==== test case: zero_port
+URI: "mxl://10.1.2.3:0/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: zero_port PASS
+==== test case: fragment_after_query
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd#fragment"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: fragment_after_query PASS
+==== test case: valid_at_range_limit_port
+URI: "mxl://host1.local:65535/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: 65535
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: 65535
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: valid_at_range_limit_port PASS
+==== test case: invalid_out_of_range_port
+URI: "mxl://10.1.2.3:65536/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: invalid_out_of_range_port PASS
+==== test case: empty_query
+URI: "mxl://host1.local/domain/path?"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+==== test case: empty_query PASS
+==== test case: leading_amp_query_param
+URI: "mxl://host1.local/domain/path?&id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: leading_amp_query_param PASS
+==== test case: double_separator_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: double_separator_query_param PASS
+==== test case: percent_encoded_in_other_query_value
+URI: "mxl://host1.local/domain/path?other=%26extra&id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: percent_encoded_in_other_query_value PASS
+==== test case: percent_encoded_key
+URI: "mxl://host1.local/domain/path?%69d=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (0):
+}
+==== test case: percent_encoded_key PASS
+==== test case: trailing_amp_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: trailing_amp_query_param PASS
+==== test case: local_domain_looks_like_port_but_is_not
+URI: "mxl:///domain/path:5000?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "/domain/path:5000"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "/domain/path:5000"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: local_domain_looks_like_port_but_is_not PASS
+==== test case: empty_host_with_port
+URI: "mxl://:5000/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: ""
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: ""
+  port: 5000
+  domain: "/domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: empty_host_with_port PASS
+==== test case: userinfo_with_empty_host
+URI: "mxl://user@/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: userinfo_with_empty_host PASS
+==== test case: double_leading_slash_path
+URI: "mxl:////domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "//domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+actual URI:
+mxl_uri {
+  host: ""
+  port: -1
+  domain: "//domain/path"
+  flow_ids (1):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+}
+==== test case: double_leading_slash_path PASS
+==== test case: query_without_path
+URI: "mxl://?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: query_without_path PASS
+==== test case: empty_ipv6_host
+URI: "mxl://[]/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_ipv6_host PASS
+==== test case: empty_ipv6_host_with_port
+URI: "mxl://[]:5000/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_ipv6_host_with_port PASS
+==== test case: empty_domain_path
+URI: "mxl://host1.local/?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_domain_path PASS
+==== test case: empty_domain_path_no_query
+URI: "mxl://host1.local"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_domain_path_no_query PASS
+==== test case: empty_domain_path_no_query_trailing_slash
+URI: "mxl://host1.local/"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_domain_path_no_query_trailing_slash PASS
+==== test case: non_unique_flow_ids
+URI: "mxl:///host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: non_unique_flow_ids PASS
+==== test case: bad_scheme
+URI: "ftp://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: bad_scheme PASS
+==== test case: no_scheme
+URI: "/host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: no_scheme PASS
+==== test case: foo_after_scheme
+URI: "mxl:foo"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: foo_after_scheme PASS
+==== test case: null_uri
+URI: "(null)"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: null_uri PASS
+==== test case: empty_uri
+URI: ""
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_uri PASS
+==== test case: equal_max_scheme
+URI: "aaaa:/host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -36
+actual return code: -36
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: equal_max_scheme PASS
+==== test case: greater_max_scheme
+URI: "aaaaa:/host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -36
+actual return code: -36
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: greater_max_scheme PASS
+==== test case: empty_middle_id_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_middle_id_query_param PASS
+==== test case: empty_end_id_query_param
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&id="
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: empty_end_id_query_param PASS
+==== test case: bad_separator_query_param
+URI: "mxl://host1.local/domain/path?id=id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: bad_separator_query_param PASS
+==== test case: bad_uuid_query_param
+URI: "mxl://host1.local/domain/path?id=X645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: bad_uuid_query_param PASS
+==== test case: invalid_negative_port
+URI: "mxl://host1.local:-2/domain/path?id=645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: invalid_negative_port PASS
+==== test case: invalid_empty_port
+URI: "mxl://10.1.2.3:/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: invalid_empty_port PASS
+==== test case: invalid_non_integer_port
+URI: "mxl://10.1.2.3:abc/domain/path?id=8c8e8a37-4a5b-4e0a-9f0b-2e3e71e3f5e1&id=5d9d1a64-7a77-4b54-8e32-6e6e8b0b9a44"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: invalid_non_integer_port PASS
+==== test case: invalid_no_domain_path
+URI: "mxl://host1.local?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: invalid_no_domain_path PASS
+==== test case: malformed_ipv6_bracket
+URI: "mxl://[2001:db8::2/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: malformed_ipv6_bracket PASS
+==== test case: percent_encoded_in_uuid_query_value
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd%26extra"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: percent_encoded_in_uuid_query_value PASS
+==== test case: userinfo_in_authority
+URI: "mxl://user@host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: userinfo_in_authority PASS
+==== test case: userpass_in_authority
+URI: "mxl://user:pass@host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: userpass_in_authority PASS
+==== test case: multiple_at_userinfo
+URI: "mxl://a@b@host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: multiple_at_userinfo PASS
+==== test case: equal_max_len_url
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&junk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+expected return code: 0
+actual return code: 0
+expected URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+actual URI:
+mxl_uri {
+  host: "host1.local"
+  port: -1
+  domain: "/domain/path"
+  flow_ids (2):
+    [0] "3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+    [1] "876fc244-9c99-48a8-a461-927e43a05bdc"
+}
+==== test case: equal_max_len_url PASS
+==== test case: greater_max_len_url
+URI: "mxl://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&junk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+expected return code: -36
+actual return code: -36
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: greater_max_len_url PASS
+
+PASS
