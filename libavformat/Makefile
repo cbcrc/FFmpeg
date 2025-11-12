@@ -670,6 +670,10 @@ OBJS-$(CONFIG_LIBMODPLUG_DEMUXER)        += libmodplug.o
 OBJS-$(CONFIG_LIBOPENMPT_DEMUXER)        += libopenmpt.o
 OBJS-$(CONFIG_VAPOURSYNTH_DEMUXER)       += vapoursynth.o
 
+# MXL demuxer/muxer
+OBJS-$(CONFIG_MXL_DEMUXER)               += mxldec.o mxl_json.o jsmn.o
+OBJS-$(CONFIG_MXL_MUXER)                 += mxlenc.o mxl_json.o jsmn.o
+
 # protocols I/O
 OBJS-$(CONFIG_ANDROID_CONTENT_PROTOCOL)  += file.o
 OBJS-$(CONFIG_ASYNC_PROTOCOL)            += async.o
@@ -777,6 +781,7 @@ TESTPROGS-$(CONFIG_MOV_MUXER)            += movenc
 TESTPROGS-$(CONFIG_NETWORK)              += noproxy
 TESTPROGS-$(CONFIG_SRTP)                 += srtp
 TESTPROGS-$(CONFIG_IMF_DEMUXER)          += imf
+TESTPROGS-$(CONFIG_MXL_DEMUXER)          += mxl_json
 
 TOOLS     = aviocat                                                     \
             ismindex                                                    \

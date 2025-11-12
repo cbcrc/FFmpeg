@@ -573,6 +573,8 @@ extern const FFInputFormat  ff_image_webp_pipe_demuxer;
 extern const FFInputFormat  ff_image_xbm_pipe_demuxer;
 extern const FFInputFormat  ff_image_xpm_pipe_demuxer;
 extern const FFInputFormat  ff_image_xwd_pipe_demuxer;
+extern const FFInputFormat  ff_mxl_demuxer;
+extern const FFOutputFormat ff_mxl_muxer;
 
 /* external libraries */
 extern const FFInputFormat  ff_avisynth_demuxer;
