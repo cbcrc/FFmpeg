@@ -723,7 +723,7 @@ finally:
 // real world MXL json string test
 //
 
-const char *real_world_mxl_json_str =
+static const char *real_world_mxl_json_str =
 "{\n"
 "  \"description\": \"MXL Test File\",\n"
 "  \"id\": \"5fbec3b1-1b0f-417d-9059-8b94a47197ef\",\n"
