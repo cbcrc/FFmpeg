@@ -105,8 +105,6 @@ static const AVOption mxl_options[] = {
 #undef OFFSET
 #undef FLAGS
 
-/* FFmpeg purpose: AVClass ties AVOptions to this private context for logging
- * and option parsing; item_name delegates to av_default_item_name. */
 static const AVClass mxl_muxer_class = {
     .class_name = "mxl muxer",
     .item_name  = av_default_item_name,
@@ -368,9 +366,6 @@ static const char *sentinel_status_to_str(SentinelStatus st)
     }
 }
 
-/* ------------------------------------------------------------------------- */
-/* FFmpeg purpose: write_trailer() finalizes the container, signals EOF to
- * consumers, flushes and releases all resources (munmap/close/free/etc.). */
 static int mxl_write_trailer(AVFormatContext *s)
 {
     av_assert0(s && s->priv_data);
@@ -413,9 +408,6 @@ static int mxl_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-/* ------------------------------------------------------------------------- */
-/* FFmpeg purpose: query_codec() optionally restricts supported codecs for
- * this muxer (e.g., only AV_CODEC_ID_V210 initially). Return 1 if supported. */
 static int mxl_query_codec(enum AVCodecID id, int std_compliance)
 {
     switch (id) {
@@ -426,9 +418,7 @@ static int mxl_query_codec(enum AVCodecID id, int std_compliance)
     }
 }
 
-/* ------------------------------------------------------------------------- */
-/* FFmpeg purpose: AVOutputFormat describes the muxer to libavformat—
- * names, default codecs, capability flags, and the function vtable. */
+// MXL muxer definition
 const FFOutputFormat ff_mxl_muxer = {
     // AVOutputFormat (public-facing fields)
     .p.name       = "mxl",
@@ -440,7 +430,10 @@ const FFOutputFormat ff_mxl_muxer = {
     .p.audio_codec = AV_CODEC_ID_NONE,
     .p.video_codec = AV_CODEC_ID_V210,
 
+     // private state
     .priv_data_size = sizeof(MXLContext),
+
+     // muxer callbacks
     .write_header   = mxl_write_header,
     .write_packet   = mxl_write_packet,
     .write_trailer  = mxl_write_trailer,
