@@ -3,7 +3,7 @@
  *
  * AVFMT_NOFILE muxer; requires "-flow_id id /path/to/domain"
  *
- * Copyright (c) 2025 Canadian Broadcasting Corporation / Radio-Canada
+ * Copyright (c) 2025 CBC/Radio-Canada
  *
  * This file is part of FFmpeg.
  *

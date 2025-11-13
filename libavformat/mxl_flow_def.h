@@ -1,7 +1,7 @@
 /*
  * MXL json flow definition for Media eXchange Layer flows
  *
- * Copyright (c) 2025 Canadian Broadcasting Corporation / Radio-Canada
+ * Copyright (c) 2025 CBC/Radio-Canada
  *
  * This file is part of FFmpeg.
  *

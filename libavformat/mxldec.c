@@ -3,7 +3,7 @@
  *
  * AVFMT_NOFILE demuxer; requires "/path/to/domain/<id>.mxl-flow"
  *
- * Copyright (c) 2025 Canadian Broadcasting Corporation / Radio-Canada
+ * Copyright (c) 2025 CBC/Radio-Canada
  *
  * This file is part of FFmpeg.
  *
