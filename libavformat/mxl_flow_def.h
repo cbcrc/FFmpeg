@@ -29,19 +29,26 @@
 /*
  * Sample flow definition for reference
 {
-  "description": "MXL Test File",
-  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
-  "tags": {},
+  "$copyright": "SPDX-FileCopyrightText: 2025 Contributors to the Media eXchange Layer project.",
+  "$license": "SPDX-License-Identifier: Apache-2.0",
+  "description": "MXL Test Flow, 1080p29",
+  "id": "5fbec3b1-1b0f-417d-9059-8b94a47197ed",
+  "tags": {
+    "urn:x-nmos:tag:grouphint/v1.0": [
+      "Media Function XYZ:Video"
+    ]
+  },
   "format": "urn:x-nmos:format:video",
-  "label": "MXL Test File",
+  "label": "MXL Test Flow, 1080p29",
   "parents": [],
   "media_type": "video/v210",
   "grain_rate": {
-    "numerator": 50,
-    "denominator": 1
+    "numerator": 30000,
+    "denominator": 1001
   },
   "frame_width": 1920,
   "frame_height": 1080,
+  "interlace_mode": "progressive",
   "colorspace": "BT709",
   "components": [
     {
@@ -81,7 +88,11 @@ static const char *flow_def_fmt =
 "{\n"
 "  \"description\": \"FFmpeg video stream\",\n"
 "  \"id\": \"%s\",\n"
-"  \"tags\": {},\n"
+"  \"tags\": {\n"
+"  \"urn:x-nmos:tag:grouphint/v1.0\": [\n"
+"     \"Media Function XYZ:Video\"\n"
+"    ]\n"
+"  },\n"
 "  \"format\": \"urn:x-nmos:format:video\",\n"
 "  \"label\": \"FFmpeg video stream\",\n"
 "  \"parents\": [],\n"
@@ -92,6 +103,7 @@ static const char *flow_def_fmt =
 "  },\n"
 "  \"frame_width\": %d,\n"
 "  \"frame_height\": %d,\n"
+"  \"interlace_mode\": \"progressive\",\n"
 "  \"colorspace\": \"BT709\",\n"
 "  \"components\": [\n"
 "    {\n"

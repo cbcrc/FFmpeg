@@ -60,7 +60,7 @@ typedef struct MXLContext {
 
     // interface objects
     mxlInstance mxl_instance;
-    mxlFlowInfo *mxl_flow_info;
+    mxlFlowConfigInfo *mxl_flow_config_info;
     mxlFlowWriter mxl_flow_writer;
 
     // state
@@ -127,7 +127,7 @@ static int mxl_write_header(AVFormatContext *s)
     // state
     mxlInstance mxl_instance = NULL;
     mxlFlowWriter flow_writer = NULL;
-    mxlFlowInfo *flow_info = NULL;
+    mxlFlowConfigInfo *flow_config_info = NULL;
     bool flow_created = false;
     uint8_t *flow_def_json = NULL;
 
@@ -160,12 +160,12 @@ static int mxl_write_header(AVFormatContext *s)
     }
     logv(s, "domain: \"%s\"\n", domain_path);
 
-    flow_info = av_malloc(sizeof(*flow_info));
-    if (!flow_info) {
+    flow_config_info = av_malloc(sizeof(*flow_config_info));
+    if (!flow_config_info) {
         exit_status = AVERROR(ENOMEM);
         goto finally;
     }
-    *flow_info = (mxlFlowInfo){0};
+    *flow_config_info = (mxlFlowConfigInfo){0};
 
     AVRational fr = st->avg_frame_rate.num ? st->avg_frame_rate : st->r_frame_rate;
     p->mxl_grain_rate = (mxlRational){fr.num, fr.den};
@@ -187,6 +187,7 @@ static int mxl_write_header(AVFormatContext *s)
     };
 
     flow_def_json = make_flow_def(&p->flow_def_params);
+    logv(s, "flow definition:\n%s\n", flow_def_json);
 
     mxl_instance = mxlCreateInstance(domain_path, NULL);
     if (NULL == mxl_instance) {
@@ -196,7 +197,7 @@ static int mxl_write_header(AVFormatContext *s)
     }
 
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
-    mxl_status = mxlCreateFlow(mxl_instance, flow_def_json, NULL, flow_info);
+    mxl_status = mxlCreateFlow(mxl_instance, flow_def_json, NULL, flow_config_info);
     if (MXL_STATUS_OK != mxl_status) {
         loge(s, "mxlCreateFlow error %s\n", mxl_status_to_str(mxl_status));
         exit_status = AVERROR(EIO);
@@ -218,8 +219,8 @@ static int mxl_write_header(AVFormatContext *s)
     p->mxl_instance = mxl_instance;
     mxl_instance = NULL;
 
-    p->mxl_flow_info = flow_info;
-    flow_info = NULL;
+    p->mxl_flow_config_info = flow_config_info;
+    flow_config_info = NULL;
 
     p->mxl_flow_writer = flow_writer;
     flow_writer = NULL;
@@ -251,8 +252,8 @@ finally:
             logw(s, "mxlDestroyInstance error %s\n", mxl_status_to_str(mxl_status));
     }
 
-    if (flow_info)
-        av_free(flow_info);
+    if (flow_config_info)
+        av_free(flow_config_info);
 
     if (flow_def_json)
         av_free(flow_def_json);
@@ -295,17 +296,26 @@ static int mxl_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     grain_open = true;
 
-    logv(s, "packet size = %d, grain_info grainSize = %" PRIu32 ", committedSize = %" PRIu32 "\n",
-         pkt->size, grain_info.grainSize, grain_info.commitedSize);
-    if (pkt->size > grain_info.grainSize) {
-        loge(s, "packet size exceeds grain size (%d > %" PRIu32 ")\n",
-             pkt->size, grain_info.grainSize);
+    logv(s, "grain_info.totalSlices = "PRIu32", flow_config_info.discrete.sliceSizes[0] = "PRIu32"\n",
+         grain_info.totalSlices * p->mxl_flow_config_info->discrete.sliceSizes[0]);
+
+    size_t grain_size = grain_info.totalSlices * p->mxl_flow_config_info->discrete.sliceSizes[0];
+
+    logv(s, "packet size = %d, grain size = %zu"
+         ", totalSlices = "PRIu16", validSlices = %"PRIu16"\n",
+         pkt->size, grain_size, grain_info.totalSlices, grain_info.validSlices);
+    if (pkt->size > grain_size) {
+        loge(s, "packet size exceeds grain size (%d > %zu)\n",
+             pkt->size, grain_size);
         exit_status = AVERROR_BUG;
         goto finally;
     }
 
     memcpy(grain_payload, pkt->data, pkt->size);
-    grain_info.commitedSize = pkt->size;
+
+    // mark all slices valid
+    grain_info.validSlices = grain_info.totalSlices;
+
     if (pkt->size < grain_info.grainSize)
         logw(s, "grain under committed (pkt->size < grain_info.grainSize, %d < %" PRIu32 ")\n",
              pkt->size, grain_info.grainSize);
@@ -389,13 +399,13 @@ static int mxl_write_trailer(AVFormatContext *s)
         p->mxl_flow_writer = NULL;
     }
 
-    if (p->mxl_flow_info) {
+    if (p->mxl_flow_config_info) {
         av_assert0(p->mxl_instance && p->flow_def_params.id);
         mxl_status = mxlDestroyFlow(p->mxl_instance, p->flow_def_params.id);
         if (MXL_STATUS_OK != mxl_status)
             logw(s, "mxlDestroyFlow error %s\n", mxl_status_to_str(mxl_status));
-        av_free(p->mxl_flow_info);
-        p->mxl_flow_info = NULL;
+        av_free(p->mxl_flow_config_info);
+        p->mxl_flow_config_info = NULL;
     }
 
     if (p->mxl_instance) {

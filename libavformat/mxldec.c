@@ -642,13 +642,13 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    if ((int64_t)grain_rate_num.value != flow_info.discrete.grainRate.numerator ||
-        (int64_t)grain_rate_den.value != flow_info.discrete.grainRate.denominator) {
+    if ((int64_t)grain_rate_num.value != flow_info.config.common.grainRate.numerator ||
+        (int64_t)grain_rate_den.value != flow_info.config.common.grainRate.denominator) {
         loge(s, "grain rate sanity, flow def rate != flow info rate"
                   ", {%"PRId64",%"PRId64"} != {%"PRId64",%"PRId64"}\n",
              (int64_t)grain_rate_num.value, (int64_t)grain_rate_den.value,
-             flow_info.discrete.grainRate.numerator,
-             flow_info.discrete.grainRate.denominator);
+             flow_info.config.common.grainRate.numerator,
+             flow_info.config.common.grainRate.denominator);
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
@@ -720,7 +720,7 @@ static int mxl_read_header(AVFormatContext *s)
     p->mxl_flow_reader = flow_reader;
     flow_reader = NULL;
 
-    p->mxl_grain_rate = flow_info.discrete.grainRate;
+    p->mxl_grain_rate = flow_info.config.common.grainRate;
     p->mxl_start_grain_index = 0;
     p->mxl_grain_index = 0;
 
@@ -821,6 +821,14 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
         goto finally;
     }
 
+    mxlFlowInfo flow_info = {0};
+    mxl_status = mxlFlowReaderGetInfo(p->mxl_flow_reader, &flow_info);
+    if (mxl_status != MXL_STATUS_OK) {
+        loge(s, "mxlFlowReaderGetInfo failed\n");
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
     // init grain index
     if (0 == p->mxl_grain_index) {
         switch (p->grain_index_init) {
@@ -837,27 +845,13 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
         }
         break;
         case GRAIN_INDEX_INIT_HEAD: {
-            mxlFlowInfo flow_info = {0};
-            mxl_status = mxlFlowReaderGetInfo(p->mxl_flow_reader, &flow_info);
-            if (mxl_status != MXL_STATUS_OK) {
-                loge(s, "mxlFlowReaderGetInfo failed\n");
-                exit_status = AVERROR(EIO);
-                goto finally;
-            }
-            p->mxl_grain_index = flow_info.discrete.headIndex;
+            p->mxl_grain_index = flow_info.runtime.headIndex;
             logv(s, "init grain index = %"PRIu64", policy: headIndex\n",
                  p->mxl_grain_index);
         }
         break;
         case GRAIN_INDEX_INIT_TAIL: {
-            mxlFlowInfo flow_info = {0};
-            mxl_status = mxlFlowReaderGetInfo(p->mxl_flow_reader, &flow_info);
-            if (mxl_status != MXL_STATUS_OK) {
-                loge(s, "mxlFlowReaderGetInfo failed\n");
-                exit_status = AVERROR(EIO);
-                goto finally;
-            }
-            p->mxl_grain_index = flow_info.discrete.headIndex - flow_info.discrete.grainCount + 1;
+            p->mxl_grain_index = flow_info.runtime.headIndex - flow_info.config.discrete.grainCount + 1;
             logv(s, "init grain index = %"PRIu64", policy: tail index\n",
                  p->mxl_grain_index);
         }
@@ -930,15 +924,16 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
         goto finally;
     }
 
-    if (grain_info.grainSize != grain_info.commitedSize) {
-        loge(s, "grain size sanity error, grainSize != commitedSize, %"PRIu32" != %"PRIu32"\n",
-             grain_info.grainSize, grain_info.commitedSize);
+    if (grain_info.totalSlices != grain_info.validSlices) {
+        loge(s, "grain size sanity error, totalSlices != validSlices, %"PRIu16" != %"PRIu16"\n",
+             grain_info.totalSlices, grain_info.validSlices);
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
 
+    size_t grain_size = grain_info.totalSlices * flow_info.config.discrete.sliceSizes[0];
     if (p->zero_copy) {
-        AVBufferRef *zcbuf = av_buffer_create(mxl_payload, grain_info.commitedSize,
+        AVBufferRef *zcbuf = av_buffer_create(mxl_payload, grain_size,
                                             mxl_zero_copy_release_cb, p, 0);
         if (!zcbuf) {
             loge(s, "av_buffer_create error\n");
@@ -948,19 +943,20 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         pkt->buf = zcbuf;
         pkt->data = mxl_payload;
-        pkt->size = grain_info.commitedSize;
+        pkt->size = grain_size;
         pkt->stream_index = stream_index;
     }
-    else {
+    else
+    {
         av_assert1(!pkt->buf);
-        int rc = av_new_packet(pkt, grain_info.commitedSize);
+        int rc = av_new_packet(pkt, grain_size);
         if (rc < 0) {
             loge(s, "av_new_packet error %d\n", rc);
             exit_status = rc;
             goto finally;
         }
 
-        memcpy(pkt->data, mxl_payload, grain_info.commitedSize);
+        memcpy(pkt->data, mxl_payload, grain_size);
     }
 
     int64_t rel_grain_count = p->mxl_grain_index - p->mxl_start_grain_index;
