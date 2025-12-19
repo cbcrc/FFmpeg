@@ -23,11 +23,16 @@
  * See: https://github.com/dmf-mxl/mxl
  */
 
+#ifndef MXL_FLOW_DEF_H
+#define MXL_FLOW_DEF_H
+
+#include "libavutil/mem.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
 /*
- * Sample flow definition for reference
+ * Sample flow definitions for reference
 {
   "$copyright": "SPDX-FileCopyrightText: 2025 Contributors to the Media eXchange Layer project.",
   "$license": "SPDX-License-Identifier: Apache-2.0",
@@ -71,9 +76,33 @@
     }
   ]
 }
+
+{
+  "$copyright": "SPDX-FileCopyrightText: 2025 Contributors to the Media eXchange Layer project.",
+  "$license": "SPDX-License-Identifier: Apache-2.0",
+  "description": "MXL Audio Flow",
+  "format": "urn:x-nmos:format:audio",
+  "tags": {
+    "urn:x-nmos:tag:grouphint/v1.0": [
+      "Media Function XYZ:Audio"
+    ]
+  },
+  "label": "MXL Audio Flow",
+  "version": "1441812152:154331951",
+  "id": "b3bb5be7-9fe9-4324-a5bb-4c70e1084449",
+  "media_type": "audio/float32",
+  "sample_rate": {
+    "numerator": 48000
+  },
+  "channel_count": 2,
+  "bit_depth": 32,
+  "parents": [],
+  "source_id": "2aa143ac-0ab7-4d75-bc32-5c00c13d186f",
+  "device_id": "169feb2c-3fae-42a5-ae2e-f6f8cbce29cf"
+}
 */
 
-typedef struct FlowDefParams {
+typedef struct VideoFlowDefParams {
     const char *id;
     int grain_rate_num;
     int grain_rate_den;
@@ -82,9 +111,9 @@ typedef struct FlowDefParams {
     int y_width, y_height, y_bit_depth;
     int cb_width, cb_height, cb_bit_depth;
     int cr_width, cr_height, cr_bit_depth;
-} FlowDefParams;
+} VideoFlowDefParams;
 
-static const char *flow_def_fmt =
+static const char *video_flow_def_fmt =
 "{\n"
 "  \"description\": \"FFmpeg video stream\",\n"
 "  \"id\": \"%s\",\n"
@@ -127,19 +156,48 @@ static const char *flow_def_fmt =
 "  ]\n"
 "}\n";
 
+typedef struct AudioFlowDefParams {
+    const char *id;
+    int         sample_rate;
+    int         channel_count;
+} AudioFlowDefParams;
+
+static const char  *audio_flow_def_fmt =
+"{\n"
+"  \"description\": \"FFmpeg audio stream\",\n"
+"  \"id\": \"%s\",\n"
+"  \"tags\": {\n"
+"    \"urn:x-nmos:tag:grouphint/v1.0\": [\n"
+"      \"Media Function XYZ:Audio\"\n"
+"    ]\n"
+"  },\n"
+"  \"format\": \"urn:x-nmos:format:audio\",\n"
+"  \"label\": \"FFmpeg audio stream\",\n"
+"  \"parents\": [],\n"
+"  \"media_type\": \"audio/float32\",\n"
+"  \"sample_rate\": {\n"
+"    \"numerator\": %d\n"
+"  },\n"
+"  \"channel_count\": %d,\n"
+"  \"bit_depth\": 32\n"
+"}\n";
+
 /**
- * Create a MXL flow definition.
+ * Create an MXL video flow definition.
  *
- * Formats a JSON flow definition using fields from FlowDefParams p
- * and returns a newly allocated string. The caller owns the returned
- * string.
+ * Formats a JSON video flow definition using fields from
+ * VideoFlowDefParams p and returns a newly allocated string. The
+ * caller owns the returned string.
  *
- * @param p Pointer to a FlowDefParams structure containing all values.
+ * @param p Pointer to a VideoFlowDefParams structure containing all values.
  * @return Newly allocated null-terminated JSON string, or NULL on failure.
  */
-static char *make_flow_def(const FlowDefParams *p)
+static char *make_video_flow_def(const VideoFlowDefParams *p)
 {
-    int len = snprintf(NULL, 0, flow_def_fmt,
+    if (!p || !p->id)
+        return NULL;
+
+    int len = snprintf(NULL, 0, video_flow_def_fmt,
         p->id,
         p->grain_rate_num, p->grain_rate_den,
         p->frame_width, p->frame_height,
@@ -149,13 +207,14 @@ static char *make_flow_def(const FlowDefParams *p)
     );
 
     if (len < 0)
-        return NULL;  // encoding error
+        return NULL;
 
-    char *buf = malloc(len + 1);  // +1 for the null terminator
+    size_t buf_size = len+1;
+    char *buf = av_malloc(buf_size);
     if (!buf)
         return NULL;
 
-    snprintf(buf, len + 1, flow_def_fmt,
+    int rc = snprintf(buf, buf_size, video_flow_def_fmt,
         p->id,
         p->grain_rate_num, p->grain_rate_den,
         p->frame_width, p->frame_height,
@@ -163,23 +222,51 @@ static char *make_flow_def(const FlowDefParams *p)
         p->cb_width, p->cb_height, p->cb_bit_depth,
         p->cr_width, p->cr_height, p->cr_bit_depth
     );
+    if (rc < 0 || (size_t)rc >= buf_size) {
+        av_free(buf);
+        return NULL;
+    }
 
     return buf;
 }
 
-static const FlowDefParams sample_flow_def_params = {
-    .id = "5fbec3b1-1b0f-417d-9059-8b94a47197ef",
-    .grain_rate_num = 50,
-    .grain_rate_den = 1,
-    .frame_width = 1920,
-    .frame_height = 1080,
-    .y_width = 1920,
-    .y_height = 1080,
-    .y_bit_depth = 10,
-    .cb_width = 960,
-    .cb_height = 1080,
-    .cb_bit_depth = 10,
-    .cr_width = 960,
-    .cr_height = 1080,
-    .cr_bit_depth = 10
-};
+/**
+ * Create an MXL audio flow definition.
+ *
+ * Formats a JSON audio flow definition using fields from
+ * AudioFlowDefParams p and returns a newly allocated string. The
+ * caller owns the returned string.
+ *
+ * @param p Pointer to an AudioFlowDefParams structure containing all values.
+ * @return Newly allocated null-terminated JSON string, or NULL on failure.
+ */
+static char *make_audio_flow_def(const AudioFlowDefParams *p)
+{
+    if (!p || !p->id)
+        return NULL;
+
+    int len = snprintf(NULL, 0, audio_flow_def_fmt,
+                       p->id,
+                       p->sample_rate,
+                       p->channel_count);
+    if (len < 0)
+        return NULL;
+
+    size_t buf_size = len+1;
+    char *buf = av_malloc(buf_size);
+    if (!buf)
+        return NULL;
+
+    int rc = snprintf(buf, buf_size, audio_flow_def_fmt,
+                           p->id,
+                           p->sample_rate,
+                           p->channel_count);
+    if (rc < 0 || (size_t)rc >= buf_size) {
+        av_free(buf);
+        return NULL;
+    }
+
+    return buf;
+}
+
+#endif // MXL_FLOW_DEF_H

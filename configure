@@ -1985,6 +1985,7 @@ EXTERNAL_LIBRARY_LIST="
     liblcevc_dec
     libmodplug
     libmp3lame
+    libmxl
     libmysofa
     liboapv
     libopencv
@@ -3726,6 +3727,8 @@ libxevd_decoder_deps_any="libxevd libxevdb"
 libxeve_encoder_deps_any="libxeve libxeveb"
 libxvid_encoder_deps="libxvid"
 libzvbi_teletext_decoder_deps="libzvbi"
+mxl_muxer_deps="libmxl"
+mxl_demuxer_deps="libmxl"
 vapoursynth_demuxer_deps="vapoursynth"
 videotoolbox_suggest="coreservices"
 videotoolbox_deps="corefoundation coremedia corevideo VTDecompressionSessionDecodeFrame"
@@ -7191,6 +7194,7 @@ fi
 enabled libmodplug        && require_pkg_config libmodplug libmodplug libmodplug/modplug.h ModPlug_Load
 enabled libmp3lame        && require "libmp3lame >= 3.98.3" lame/lame.h lame_set_VBR_quality -lmp3lame $libm_extralibs
 enabled libmpeghdec       && require_pkg_config libmpeghdec "mpeghdec >= 3.0.0" mpeghdec/mpeghdecoder.h mpeghdecoder_init
+enabled libmxl            && require_pkg_config libmxl libmxl mxl/mxl.h mxlCreateInstance
 enabled libmysofa         && { check_pkg_config libmysofa libmysofa mysofa.h mysofa_neighborhood_init_withstepdefine ||
                                require libmysofa mysofa.h mysofa_neighborhood_init_withstepdefine -lmysofa $zlib_extralibs; }
 enabled libnpp            && { test_cpp_condition "$(cd "$source_path"; pwd)/libavfilter/version_major.h" FF_API_LIBNPP_SUPPORT ||
