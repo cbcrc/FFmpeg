@@ -237,7 +237,6 @@ static int create_mxl_flow(AVFormatContext *s, AVStream *st,
 
     mxlFlowWriter flow_writer = NULL;
     mxlFlowConfigInfo *flow_config_info = NULL;
-    bool flow_created = false;
 
     FlowDefFactoryResult factory_res = flow_def_factory(st, p);
     av_assert0(factory_res.flow_id && factory_res.flow_def_json && factory_res.flow_state);
@@ -252,24 +251,17 @@ static int create_mxl_flow(AVFormatContext *s, AVStream *st,
     }
     *flow_config_info = (mxlFlowConfigInfo){0};
 
-    mxlStatus mxl_status = mxlCreateFlow(mxl_instance,
-                                         factory_res.flow_def_json,
-                                         NULL, flow_config_info);
-    if (MXL_STATUS_OK != mxl_status) {
-        loge(s, "mxlCreateFlow %s error %s\n", factory_res.flow_state->detail,
-             mxl_status_to_str(mxl_status));
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-    flow_created = true;
-
-    mxl_status = mxlCreateFlowWriter(mxl_instance, factory_res.flow_id,
-                                     NULL, &flow_writer);
+    bool new_flow_created = false;
+    mxlStatus mxl_status = mxlCreateFlowWriter(
+        mxl_instance, factory_res.flow_def_json,
+        NULL, &flow_writer, flow_config_info, &new_flow_created);
     if (MXL_STATUS_OK != mxl_status) {
         loge(s, "mxlCreateFlowWriter error %s\n", mxl_status_to_str(mxl_status));
         exit_status = AVERROR(EIO);
         goto finally;
     }
+    logv(s, "mxlCreateFlowWriter opened %s flow\n",
+         new_flow_created ? "a new" : "an existing");
 
     // all good, transfer state to context
     factory_res.flow_state->mxl_flow_config_info = flow_config_info;
@@ -277,9 +269,6 @@ static int create_mxl_flow(AVFormatContext *s, AVStream *st,
 
     factory_res.flow_state->mxl_flow_writer = flow_writer;
     flow_writer = NULL;
-
-    // flow is now mxl_write_trailer's responsibility to destroy
-    flow_created = false;
 
     exit_status = 0;
 
@@ -290,13 +279,6 @@ finally:
         if (MXL_STATUS_OK != mxl_status)
             logw(s, "mxlReleaseFlowWriter error %s\n", mxl_status_to_str(mxl_status));
         flow_writer = NULL;
-    }
-
-    if (flow_created) {
-        mxl_status = mxlDestroyFlow(mxl_instance, factory_res.flow_id);
-        if (MXL_STATUS_OK != mxl_status)
-            logw(s, "mxlDestroyFlow error %s\n", mxl_status_to_str(mxl_status));
-        flow_created = false;
     }
 
     av_free(flow_config_info);
@@ -837,16 +819,8 @@ static void flow_teardown(AVFormatContext *s, FlowState *flow_state)
         flow_state->mxl_flow_writer = NULL;
     }
 
-    if (flow_state->mxl_flow_config_info) {
-        av_assert0(p->state.mxl_instance && flow_state->flow_id);
-        mxlStatus mxl_status = mxlDestroyFlow(p->state.mxl_instance,
-                                              flow_state->flow_id);
-        if (MXL_STATUS_OK != mxl_status)
-            logw(s, "mxlDestroyFlow %s error %s\n",
-                 flow_state->detail, mxl_status_to_str(mxl_status));
-        av_free(flow_state->mxl_flow_config_info);
-        flow_state->mxl_flow_config_info = NULL;
-    }
+    av_free(flow_state->mxl_flow_config_info);
+    flow_state->mxl_flow_config_info = NULL;
 }
 
 static int mxl_write_trailer(AVFormatContext *s)
