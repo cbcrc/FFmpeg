@@ -30,6 +30,7 @@ mxl_domain_init:
 fate-mxl-video-encdec: CMD = \
     ( \
         set -e; \
+	export MXL_LOG_LEVEL=off; \
         rm -rf $(MXL_VIDEO_FLOW_DIR); \
         rm -f $(MXL_VIDEO_SENTINEL); \
         $(TARGET_PATH)/ffmpeg -hide_banner -nostdin -v error -re \
@@ -64,6 +65,7 @@ fate-mxl-video-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-video-encdec
 fate-mxl-audio-encdec: CMD = \
     ( \
         set -e; \
+	export MXL_LOG_LEVEL=off; \
         rm -rf $(MXL_AUDIO_FLOW_DIR); \
         rm -f $(MXL_AUDIO_SENTINEL); \
         $(TARGET_PATH)/ffmpeg -hide_banner -nostdin -re -v error \
