@@ -882,20 +882,28 @@ static int mxl_read_header(AVFormatContext *s)
     SET_META(st, "mxl_format", format.value);
     SET_META(st, "mxl_media_type", media_type.value);
 
+    const char *buf = media_type.value;
+    char *unescaped_media_type = av_get_token(&buf, "");
+    if (!unescaped_media_type) {
+        loge(s, "failed to allocate unescaped_media_type\n");
+        exit_status = AVERROR(ENOMEM);
+        goto finally;
+    }
+
     MXLContext *p = s->priv_data;
 
-    if ( strcmp(media_type.value, "audio/float32") == 0 ) {
+    if ( strcmp(unescaped_media_type, "audio/float32") == 0 ) {
         p->flow_type = AUDIO_FLOW;
-        int rc = read_audio_header(s, &flow_info, &flow_def_doc, st, media_type.value);
+        int rc = read_audio_header(s, &flow_info, &flow_def_doc, st, unescaped_media_type);
         if (rc) {
             loge(s, "read audio header error\n");
             exit_status = rc;
             goto finally;
         }
     }
-    else if ( strcmp(media_type.value, "video/v210") == 0 ) {
+    else if ( strcmp(unescaped_media_type, "video/v210") == 0 ) {
         p->flow_type = VIDEO_FLOW;
-        int rc = read_video_header(s, &flow_info, &flow_def_doc, st, media_type.value);
+        int rc = read_video_header(s, &flow_info, &flow_def_doc, st, unescaped_media_type);
         if (rc) {
             loge(s, "read video header error\n");
             exit_status = rc;
@@ -903,7 +911,7 @@ static int mxl_read_header(AVFormatContext *s)
         }
     }
     else {
-        loge(s, "unsupported media_type \"%s\"\n", media_type.value);
+        loge(s, "unsupported media_type \"%s\"\n", unescaped_media_type);
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
@@ -936,6 +944,7 @@ finally:
     av_free(label.value);
     av_free(format.value);
     av_free(media_type.value);
+    av_free(unescaped_media_type);
     av_free(flow_def_json);
 
     if (flow_reader) {
@@ -1582,7 +1591,7 @@ static int mxl_read_close(AVFormatContext *s)
         p->flow.audio = (AudioState){0};
         break;
     default:
-        logw(s, "unknown flow_type");
+        logw(s, "unknown flow_type\n");
     }
 
     p->at_eof = false;
