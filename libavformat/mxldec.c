@@ -876,12 +876,6 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    SET_META(st, "mxl_id", id.value);
-    SET_META(st, "mxl_description", desc.value);
-    SET_META(st, "mxl_label", label.value);
-    SET_META(st, "mxl_format", format.value);
-    SET_META(st, "mxl_media_type", media_type.value);
-
     const char *buf = media_type.value;
     char *unescaped_media_type = av_get_token(&buf, "");
     if (!unescaped_media_type) {
@@ -889,6 +883,12 @@ static int mxl_read_header(AVFormatContext *s)
         exit_status = AVERROR(ENOMEM);
         goto finally;
     }
+
+    SET_META(st, "mxl_id", id.value);
+    SET_META(st, "mxl_description", desc.value);
+    SET_META(st, "mxl_label", label.value);
+    SET_META(st, "mxl_format", format.value);
+    SET_META(st, "mxl_media_type", unescaped_media_type);
 
     MXLContext *p = s->priv_data;
 
