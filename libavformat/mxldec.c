@@ -1326,7 +1326,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             logv(s, "init sample index = %"PRIu64", policy: headIndex\n",
                  p->flow.audio.mxl_sample_index);
             break;
-        case GRAIN_INDEX_INIT_TAIL:
+        case GRAIN_INDEX_INIT_TAIL: {
             // MXL limits readable audio ring buffer length to half
             // the buffer size. The tail calc must handle
             // max_audio_samples smaller than readableBufLen and, in
@@ -1349,6 +1349,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             logv(s, "init sample index = %"PRIu64", policy: tail index\n",
                  p->flow.audio.mxl_sample_index);
             break;
+        }
         default:
             loge(s, "unrecognized grain_index_init = \"%d\"\n", p->grain_index_init);
             exit_status = AVERROR_BUG;
