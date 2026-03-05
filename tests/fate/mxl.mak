@@ -1,6 +1,9 @@
 fate-mxl-json: libavformat/tests/mxl_json$(EXESUF)
 fate-mxl-json: CMD = run libavformat/tests/mxl_json$(EXESUF)
 
+fate-mxl-uri: libavformat/tests/mxl_uri$(EXESUF)
+fate-mxl-uri: CMD = run libavformat/tests/mxl_uri$(EXESUF)
+
 # Note: MXL_OPTIONS is defined explicitly (even though it matches the
 # default MXL value) to make the test's dependency on this
 # history_duration setting unambiguous and intentional.
