@@ -1251,10 +1251,9 @@ static int test_mxl_uri_free(void) {
 
 int main(void) {
 
-    printf("testing mxl_uri: mxl URI parser\n");
+    printf("testing mxl_uri: mxl URI parser\n\n");
 
-    // av_log_set_level(AV_LOG_QUIET);
-    av_log_set_level(AV_LOG_ERROR);
+    av_log_set_level(AV_LOG_QUIET);
 
     int rc = -1;
 

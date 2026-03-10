@@ -107,6 +107,9 @@ fate-mxl-video-encdec fate-mxl-audio-encdec: | mxl_domain_init
 # json test if demuxer is enabled
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-json)
 
+# uri test if demuxer is enabled
+FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-uri)
+
 # video encode/decode test if both muxer and demuxer are enabled
 FATE-yes += \
     $(if $(filter yes,$(CONFIG_MXL_DEMUXER)), \
