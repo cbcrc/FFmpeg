@@ -514,6 +514,16 @@ static test_case no_scheme = {
     .expected = expected_error_uri
 };
 
+static test_case foo_after_scheme = {
+    .name = "foo_after_scheme",
+
+    .uri = "mxl:foo",
+
+    .expected_rc = AVERROR(EINVAL),
+
+    .expected = expected_error_uri
+};
+
 static test_case null_uri = {
     .name = "null_uri",
 
@@ -851,8 +861,8 @@ static test_case percent_encoded_key = {
     .name = "percent_encoded_key",
 
     .uri =
-    "mxl://host1.local/domain/path?"
-    "%69d=3645f1e2-90fc-49cb-af9c-236c2ac124cd",
+        "mxl://host1.local/domain/path?"
+        "%69d=3645f1e2-90fc-49cb-af9c-236c2ac124cd",
 
     .expected_rc = 0,
 
@@ -995,8 +1005,8 @@ static test_case empty_host_with_port = {
     .name = "empty_host_with_port",
 
     .uri =
-    "mxl://:5000/domain/path?"
-    "id=3645f1e2-90fc-49cb-af9c-236c2ac124cd",
+        "mxl://:5000/domain/path?"
+        "id=3645f1e2-90fc-49cb-af9c-236c2ac124cd",
 
     .expected_rc = 0,
 
@@ -1146,6 +1156,7 @@ static const test_case *tests[] = {
     // aberrant cases
     &bad_scheme,
     &no_scheme,
+    &foo_after_scheme,
     &null_uri,
     &empty_uri,
     &equal_max_scheme,
@@ -1214,7 +1225,8 @@ static int run_uri_limit_test(const char *name,
     return run_test_case(&tc);
 }
 
-static int test_mxl_uri_free(void) {
+static int test_mxl_uri_free(void)
+{
 
     // sanity check freeing a null
     mxl_uri_free(NULL);
@@ -1248,8 +1260,44 @@ static int test_mxl_uri_free(void) {
     return 0;
 }
 
+static int test_scheme_prefix_check(void)
+{
 
-int main(void) {
+    if (!mxl_uri_is_mxl_scheme(zero_id.uri)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: zero_id\n");
+        return -1;
+    }
+
+    if (!mxl_uri_is_mxl_scheme(two_id_upcase.uri)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: two_id_upcase\n");
+        return -1;
+    }
+
+    if (!mxl_uri_is_mxl_scheme(foo_after_scheme.uri)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: foo_scheme\n");
+        return -1;
+    }
+
+    if (mxl_uri_is_mxl_scheme(bad_scheme.uri)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: bad_scheme\n");
+        return -1;
+    }
+
+    if (mxl_uri_is_mxl_scheme(no_scheme.uri)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: no_scheme\n");
+        return -1;
+    }
+
+    if (mxl_uri_is_mxl_scheme(NULL)) {
+        fprintf(stderr, "==== test_scheme_prefix_check FAIL: NULL\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+int main(void)
+{
 
     printf("testing mxl_uri: mxl URI parser\n\n");
 
@@ -1277,6 +1325,11 @@ int main(void) {
 
     // test freeing a mxl_uri parse result
     rc = test_mxl_uri_free();
+    if (rc)
+        goto finally;
+
+    // test scheme prefix check (i.e. starts with "mxl:")
+    rc = test_scheme_prefix_check();
 
 finally:
 

@@ -30,21 +30,6 @@
 #include <ctype.h>
 #include <string.h>
 
-void mxl_uri_free(mxl_uri *u)
-{
-    int i;
-    if (!u)
-        return;
-
-    av_free((void*)u->host);
-    av_free((void*)u->domain);
-
-    for (i = 0; i < u->nb_flow_ids; i++)
-        av_free((void*)u->flow_ids[i]);
-    av_free((void*)u->flow_ids);
-    memset(u, 0, sizeof(*u));
-}
-
 static int is_valid_uuid(const char *s)
 {
     if (!s)
@@ -70,6 +55,26 @@ static int is_valid_uuid(const char *s)
     }
 
     return 1;
+}
+
+void mxl_uri_free(mxl_uri *u)
+{
+    int i;
+    if (!u)
+        return;
+
+    av_free((void*)u->host);
+    av_free((void*)u->domain);
+
+    for (i = 0; i < u->nb_flow_ids; i++)
+        av_free((void*)u->flow_ids[i]);
+    av_free((void*)u->flow_ids);
+    memset(u, 0, sizeof(*u));
+}
+
+int mxl_uri_is_mxl_scheme(const char *uri)
+{
+    return uri && av_stristart(uri, "mxl:", NULL);
 }
 
 int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)

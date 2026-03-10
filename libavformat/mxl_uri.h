@@ -57,6 +57,17 @@ typedef struct mxl_uri {
 } mxl_uri;
 
 /**
+ * Test whether @uri uses the "mxl" scheme (i.e. begins with "mxl:").
+ *
+ * Performs a simple prefix check for "mxl:" and does not parse or
+ * validate the remainder of the URI.
+ *
+ * @param uri URI string to test (may be NULL)
+ * @return 1 if the URI begins with "mxl:", 0 otherwise.
+ */
+int mxl_uri_is_mxl_scheme(const char *uri);
+
+/**
  * Parse an MXL URI and return the parsed result in @out.
  *
  * The URI grammar is:
@@ -94,7 +105,7 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out);
  * @parsed_uri are freed and cleared. The @parsed_uri pointer itself
  * is not freed.
  *
- * @param parsed_uri The parsed URI to free.
+ * @param parsed_uri The parsed URI to free (may be NULL).
  */
 void mxl_uri_free(mxl_uri *parsed_uri);
 
