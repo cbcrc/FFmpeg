@@ -769,6 +769,25 @@ mxl_uri {
   flow_ids (0):
 }
 ==== test case: no_scheme PASS
+==== test case: foo_after_scheme
+URI: "mxl:foo"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: foo_after_scheme PASS
 ==== test case: null_uri
 URI: "(null)"
 expected return code: -22
