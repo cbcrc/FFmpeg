@@ -144,16 +144,49 @@ static void dump_test_case(const test_case *tc, int actual_parse_rc, const mxl_u
     dump_uri(actual);
 }
 
+/* returns 0 if invariants are satisfied */
+static int verify_invariants(int parse_rc, const mxl_uri* actual) {
+    if (!actual)
+        return -1;
+
+    if (!parse_rc) {
+        /* parse success invariants */
+        if (actual->host && actual->port >= -1 && actual->domain &&
+            actual->nb_flow_ids >= 0 &&
+            (actual->nb_flow_ids == 0 ? !actual->flow_ids : actual->flow_ids)) {
+            return 0;
+        }
+    }
+    else {
+        /* parse failure invariants */
+        if (!actual->host && actual->port <= -1 && !actual->domain &&
+            actual->nb_flow_ids == 0 && !actual->flow_ids) {
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
 static int run_test_case(const test_case *tc)
 {
     mxl_uri actual = {0};
     int parse_rc = -1;
+    int invariants_rc = -1;
     int compare_rc = -1;
     int test_case_rc = -1;
 
     parse_rc = mxl_parse_uri(NULL, tc->uri, &actual);
 
     dump_test_case(tc, parse_rc, &actual);
+
+    invariants_rc = verify_invariants(parse_rc, &actual);
+    if (invariants_rc != 0) {
+        fprintf(stderr,
+                "==== test '%s' FAIL: parsed URI invariants violated\n",
+                tc->name);
+        goto finally;
+    }
 
     compare_rc = compare_uri(&tc->expected, &actual);
     if (compare_rc != 0) {

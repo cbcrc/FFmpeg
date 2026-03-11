@@ -1,0 +1,10 @@
+Input #0, mxl, from 'mxl:///home/jpt/cbcrc/FFmpeg/tests/data/tmp/mxl/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8':
+  Duration: N/A, bitrate: N/A
+  Stream #0:0: Video: v210 (v210 / 0x30313276), yuv422p10le(progressive), 1920x1080 [SAR 1:1 DAR 16:9], 50 fps, 50 tbr, 50 tbn
+    Metadata:
+      mxl_id          : 717f834b-4224-4c9b-8a64-ecb7726803b8
+      mxl_description : FFmpeg video stream
+      mxl_label       : FFmpeg video stream
+      mxl_format      : urn:x-nmos:format:video
+      mxl_media_type  : video/v210
+      mxl_colorspace  : BT709
