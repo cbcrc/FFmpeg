@@ -153,7 +153,7 @@ static int verify_invariants(int parse_rc, const mxl_uri* actual) {
         /* parse success invariants */
         if (actual->host && actual->port >= -1 && actual->domain &&
             actual->nb_flow_ids >= 0 &&
-            (actual->nb_flow_ids == 0 ? !actual->flow_ids : actual->flow_ids)) {
+            (actual->nb_flow_ids == 0 ? actual->flow_ids == NULL : actual->flow_ids != NULL)) {
             return 0;
         }
     }
