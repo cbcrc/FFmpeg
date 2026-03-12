@@ -10,21 +10,21 @@ fate-mxl-uri: CMD = run libavformat/tests/mxl_uri$(EXESUF)
 
 MXL_TMP_DIR := $(TARGET_PATH)/tests/data/tmp/mxl
 MXL_DOMAIN_DIR := $(MXL_TMP_DIR)/domain
-MXL_OPTIONS_JSON  := $(MXL_DOMAIN_DIR)/options.json
+MXL_OPTIONS_JSON := $(MXL_DOMAIN_DIR)/options.json
 MXL_OPTIONS := "{"\"urn:x-mxl:option:history_duration/v1.0\"":100000000}"
 MXL_VIDEO_FLOW_ID := 717f834b-4224-4c9b-8a64-ecb7726803b8
-MXL_VIDEO_FLOW_DIR = $(MXL_DOMAIN_DIR)/$(MXL_VIDEO_FLOW_ID).mxl-flow
-MXL_VIDEO_FLOW_URI = mxl://$(MXL_DOMAIN_DIR)?id=$(MXL_VIDEO_FLOW_ID)
+MXL_VIDEO_FLOW_DIR := $(MXL_DOMAIN_DIR)/$(MXL_VIDEO_FLOW_ID).mxl-flow
+MXL_VIDEO_FLOW_URI := mxl://$(MXL_DOMAIN_DIR)?id=$(MXL_VIDEO_FLOW_ID)
 MXL_AUDIO_FLOW_ID := ff39f65b-d760-4a7c-808d-4f2778de5658
-MXL_AUDIO_FLOW_DIR = $(MXL_DOMAIN_DIR)/$(MXL_AUDIO_FLOW_ID).mxl-flow
-MXL_AUDIO_FLOW_URI = mxl://$(MXL_DOMAIN_DIR)?id=$(MXL_AUDIO_FLOW_ID)
-MXL_AUDIO_MAX_SAMPLES=2559
-MXL_AUDIO_SAMPLES_PER_PACKET=512
+MXL_AUDIO_FLOW_DIR := $(MXL_DOMAIN_DIR)/$(MXL_AUDIO_FLOW_ID).mxl-flow
+MXL_AUDIO_FLOW_URI := mxl://$(MXL_DOMAIN_DIR)?id=$(MXL_AUDIO_FLOW_ID)
+MXL_AUDIO_MAX_SAMPLES := 2559
+MXL_AUDIO_SAMPLES_PER_PACKET := 512
 MXL_VIDEO_SENTINEL := $(MXL_TMP_DIR)/sentinel.video
 MXL_AUDIO_SENTINEL := $(MXL_TMP_DIR)/sentinel.audio
 MXL_SENTINEL_TIMEOUT := 4000
-DEMUX_RETRY_SLEEP := 0.3
-DEMUX_RETRY_LIMIT := 10
+RETRY_SLEEP := 0.3
+RETRY_LIMIT := 10
 
 .PHONY: mxl_domain_init
 mxl_domain_init:
@@ -47,8 +47,8 @@ fate-mxl-video-encdec: CMD = \
         trap "kill $$MUX_PID 2>/dev/null || true" INT TERM EXIT; \
         set +e; \
 	RETRIES=0; \
-	while [ $$RETRIES -lt $(DEMUX_RETRY_LIMIT) ]; do \
-            sleep $(DEMUX_RETRY_SLEEP); \
+	while [ $$RETRIES -lt $(RETRY_LIMIT) ]; do \
+            sleep $(RETRY_SLEEP); \
             $(TARGET_PATH)/ffmpeg -hide_banner -v error \
 	        -f mxl -max_video_frames 5 -grain_index_init 2 -i $(MXL_VIDEO_FLOW_DIR) \
 	        -f framemd5 pipe:1; \
@@ -60,7 +60,7 @@ fate-mxl-video-encdec: CMD = \
             fi; \
         done; \
         set -e; \
-	if [ $$RETRIES -ge $(DEMUX_RETRY_LIMIT) ]; then echo "demuxer failed"; exit 1; fi; \
+	if [ $$RETRIES -ge $(RETRY_LIMIT) ]; then echo "demuxer failed"; exit 1; fi; \
         wait $$MUX_PID; \
         trap - INT TERM EXIT; \
     )
@@ -83,8 +83,8 @@ fate-mxl-audio-encdec: CMD = \
         trap "kill $$MUX_PID 2>/dev/null || true" INT TERM EXIT; \
         set +e; \
 	RETRIES=0; \
-	while [ $$RETRIES -lt $(DEMUX_RETRY_LIMIT) ]; do \
-            sleep $(DEMUX_RETRY_SLEEP); \
+	while [ $$RETRIES -lt $(RETRY_LIMIT) ]; do \
+            sleep $(RETRY_SLEEP); \
             $(TARGET_PATH)/ffmpeg -hide_banner -v error \
                 -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -grain_index_init 2 \
                 -i $(MXL_AUDIO_FLOW_DIR) \
@@ -97,7 +97,7 @@ fate-mxl-audio-encdec: CMD = \
             fi; \
         done; \
         set -e; \
-	if [ $$RETRIES -ge $(DEMUX_RETRY_LIMIT) ]; then echo "demuxer failed"; exit 1; fi; \
+	if [ $$RETRIES -ge $(RETRY_LIMIT) ]; then echo "demuxer failed"; exit 1; fi; \
         wait $$MUX_PID; \
         trap - INT TERM EXIT; \
     )
@@ -120,8 +120,8 @@ fate-mxl-video-probe: CMD = \
         trap "kill $$MUX_PID 2>/dev/null || true" INT TERM EXIT; \
         set +e; \
         RETRIES=0; \
-        while [ $$RETRIES -lt $(DEMUX_RETRY_LIMIT) ]; do \
-            sleep $(DEMUX_RETRY_SLEEP); \
+        while [ $$RETRIES -lt $(RETRY_LIMIT) ]; do \
+            sleep $(RETRY_SLEEP); \
             $(TARGET_PATH)/ffprobe -hide_banner -v info \
                 $(MXL_VIDEO_FLOW_URI) 2>&1; \
             PROBE_STATUS=$$?; \
@@ -133,10 +133,7 @@ fate-mxl-video-probe: CMD = \
             fi; \
         done; \
         set -e; \
-        if [ $$RETRIES -ge $(DEMUX_RETRY_LIMIT) ]; then \
-            echo "ffprobe failed"; \
-            exit 1; \
-        fi; \
+	if [ $$RETRIES -ge $(RETRY_LIMIT) ]; then echo "ffprobe failed"; exit 1; fi; \
         wait $$MUX_PID; \
         trap - INT TERM EXIT; \
     )
@@ -159,19 +156,19 @@ fate-mxl-audio-probe: CMD = \
         trap "kill $$MUX_PID 2>/dev/null || true" INT TERM EXIT; \
         set +e; \
 	RETRIES=0; \
-	while [ $$RETRIES -lt $(DEMUX_RETRY_LIMIT) ]; do \
-            sleep $(DEMUX_RETRY_SLEEP); \
+	while [ $$RETRIES -lt $(RETRY_LIMIT) ]; do \
+            sleep $(RETRY_SLEEP); \
             $(TARGET_PATH)/ffprobe -hide_banner -v info \
                 $(MXL_AUDIO_FLOW_URI) 2>&1; \
-            DEMUX_STATUS=$$?; \
-            if [ $$DEMUX_STATUS -eq 0 ]; then \
+            PROBE_STATUS=$$?; \
+            if [ $$PROBE_STATUS -eq 0 ]; then \
 	        touch $(MXL_AUDIO_SENTINEL); \
 		break; \
             else RETRIES=$$((RETRIES+1)); \
             fi; \
         done; \
         set -e; \
-	if [ $$RETRIES -ge $(DEMUX_RETRY_LIMIT) ]; then echo "demuxer failed"; exit 1; fi; \
+	if [ $$RETRIES -ge $(RETRY_LIMIT) ]; then echo "ffprobe failed"; exit 1; fi; \
         wait $$MUX_PID; \
         trap - INT TERM EXIT; \
     )
