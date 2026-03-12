@@ -26,6 +26,7 @@
  */
 
 #include "mxl_common.h"
+#include "mxl_status.h"
 #include "mxl_flow_def.h"
 #include "mux.h"
 #include "avformat.h"

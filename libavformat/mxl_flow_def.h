@@ -269,4 +269,4 @@ static char *make_audio_flow_def(const AudioFlowDefParams *p)
     return buf;
 }
 
-#endif // MXL_FLOW_DEF_H
+#endif /* MXL_FLOW_DEF_H */

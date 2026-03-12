@@ -26,6 +26,7 @@
  */
 
 #ifndef AVFORMAT_MXL_URI_H
+#define AVFORMAT_MXL_URI_H
 
 /* Parsing limits: av_url_split() silently truncates into
  * caller-provided buffers. We therefore cap the total URI length
@@ -49,12 +50,17 @@ _Static_assert(MXL_URI_MAX <= MXL_PATH_MAX,
 #endif
 
 typedef struct mxl_uri {
-    const char *host;
+    char *host;
     int   port;
-    const char *domain;
-    const char * const *flow_ids;
+    char *domain;
+    char **flow_ids;
     int   nb_flow_ids;
 } mxl_uri;
+
+/**
+ *  Returns 1 if @s is a value UUID, or else returns 0.
+ */
+int mxl_uri_is_valid_uuid(const char *s);
 
 /**
  * Test whether @uri uses the "mxl" scheme (i.e. begins with "mxl:").

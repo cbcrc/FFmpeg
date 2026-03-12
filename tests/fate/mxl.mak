@@ -4,6 +4,9 @@ fate-mxl-json: CMD = run libavformat/tests/mxl_json$(EXESUF)
 fate-mxl-uri: libavformat/tests/mxl_uri$(EXESUF)
 fate-mxl-uri: CMD = run libavformat/tests/mxl_uri$(EXESUF)
 
+fate-mxl-loc: libavformat/tests/mxl_loc$(EXESUF)
+fate-mxl-loc: CMD = run libavformat/tests/mxl_loc$(EXESUF)
+
 # Note: MXL_OPTIONS is defined explicitly (even though it matches the
 # default MXL value) to make the test's dependency on this
 # history_duration setting unambiguous and intentional.
@@ -182,6 +185,9 @@ FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-json)
 
 # uri test if demuxer is enabled
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-uri)
+
+# locator test if demuxer is enabled
+FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-loc)
 
 # video encode/decode test if both muxer and demuxer are enabled
 FATE-yes += \

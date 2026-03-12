@@ -27,7 +27,9 @@
 
 #include "mxl_json.h"
 #include "mxl_uri.h"
+#include "mxl_loc.h"
 #include "mxl_common.h"
+#include "mxl_status.h"
 #include "demux.h"
 #include "avformat.h"
 
@@ -292,158 +294,6 @@ static void log_format_context(const AVFormatContext *s)
     logv(s, "  url: %s\n", s->url ? s->url : "(null)");
 }
 
-/**
- * Extract the directory from a path of the form
- * "/path/to/domain/<id>.mxl-flow".
- *
- * Returns a newly allocated string or null if the path contains no
- * usable domain component. Caller must free the returned string.
- */
-static char *extract_domain_from_path(const char *path)
-{
-    if (!path)
-        return NULL;
-
-    char *tmp = av_strdup(path);
-    if (!tmp)
-        return NULL;
-
-    const char* dir = av_dirname(tmp);
-    av_assert0(dir);
-
-    // reject unusable dir names
-    if (strcmp(dir, ".") == 0 || strcmp(dir, "/") == 0 || *dir == '\0') {
-        av_free(tmp);
-        return NULL;
-    }
-
-    // stable copy
-    char *out = av_strdup(dir);
-    av_free(tmp);
-
-    return out;
-}
-
-/**
- * Extract the id from a path of the form "/path/to/domain/<id>.mxl-flow".
- *
- * Returns a newly allocated string or NULL if the path has no usable
- * id component. Caller must free the returned string.
- */
-static char *extract_flowid_from_path(const char *path)
-{
-    if (!path)
-        return NULL;
-
-    const char *base = av_basename(path);
-    av_assert0(base);
-
-    const char *ext = MXL_DOT_FLOW_EXT;
-    size_t ext_len  = sizeof(MXL_DOT_FLOW_EXT) - 1;
-    size_t base_len = strlen(base);
-
-    if (base_len <= ext_len)
-        return NULL;
-
-    if (strcmp(base + base_len - ext_len, ext) != 0)
-        return NULL;
-
-    size_t id_len = base_len - ext_len;
-    av_assert0(id_len > 0);
-
-    char *id = av_malloc(id_len + 1);
-    if (!id)
-        return NULL;
-
-    memcpy(id, base, id_len);
-    id[id_len] = '\0';
-
-    return id;
-}
-
-typedef struct ParseResult {
-    char* domain_path;
-    char* flowid;
-} ParseResult;
-
-static void free_parse_result(ParseResult *pr)
-{
-    av_assert0(pr);
-    av_free(pr->domain_path);
-    av_free(pr->flowid);
-}
-
-static int parse_resource_identifier(void* logctx, const char* resource, ParseResult *out)
-{
-    av_assert0(out);
-
-    char *domain_path = NULL;
-    char *flowid = NULL;
-    int exit_status = -1;
-
-    out->domain_path = NULL;
-    out->flowid = NULL;
-
-    if (mxl_uri_is_mxl_scheme(resource)) {
-        mxl_uri uri;
-        int parse_rc = mxl_parse_uri(logctx, resource, &uri);
-        if (parse_rc) {
-            loge(logctx, "MXL scheme found but URI parse failed: \"%s\"\n", resource);
-            exit_status = parse_rc;
-            goto finally;
-        }
-
-        av_assert0(uri.host);
-        if (uri.host[0] != '\0') {
-            loge(logctx, "MXL URI host not supported: \"%s\"\n", resource);
-            exit_status = -1;
-            goto finally;
-        }
-
-        if (uri.nb_flow_ids != 1) {
-            loge(logctx, "MXL URI must have one flow ID: \"%s\"\n", resource);
-            exit_status = -1;
-            goto finally;
-        }
-
-        av_assert0(uri.domain);
-        domain_path = av_strdup(uri.domain);
-
-        av_assert0(uri.flow_ids);
-        flowid = av_strdup(uri.flow_ids[0]);
-
-        mxl_uri_free(&uri);
-    }
-    else if (av_match_ext(resource, MXL_FLOW_EXT)) {
-        domain_path = extract_domain_from_path(resource);
-        if (NULL == domain_path) {
-            logv(logctx, "failed to extract domain\n");
-            exit_status = -1;
-            goto finally;
-        }
-
-        flowid = extract_flowid_from_path(resource);
-        if (NULL == flowid) {
-            logv(logctx, "failed to extract MXL flow id\n");
-            goto finally;
-        }
-    }
-
-    out->domain_path = domain_path;
-    domain_path = NULL;
-
-    out->flowid = flowid;
-    flowid = NULL;
-
-    exit_status = 0;
-
-finally:
-
-    av_free(domain_path);
-    av_free(flowid);
-
-    return exit_status;
-}
 
 /**
  * Identify MXL flow inputs by filename pattern and state.
@@ -471,30 +321,38 @@ static int mxl_probe(const AVProbeData *p) {
     if (!p->filename)
         goto finally;
 
-    ParseResult pr = {0};
-    int rc = parse_resource_identifier(NULL, p->filename, &pr);
-    if (rc)
+    mxl_loc loc = {0};
+    int rc = mxl_loc_parse(NULL, p->filename, &loc);
+    if (rc) {
+        logv(NULL, "MXL failed to parse locator: \"%s\"\n", p->filename);
         goto finally;
+    }
 
-    av_assert0(pr.domain_path);
-    av_assert0(pr.flowid);
+    // mxl_loc parse invariants
+    av_assert0(loc.domain_path);
+    av_assert0(loc.flow_ids);
+    av_assert0(loc.nb_flow_ids >= 1);
 
-    logv(NULL, "MXL probe domain: \"%s\"\n", pr.domain_path);
-    logv(NULL, "MXL probe flow id: \"%s\"\n", pr.flowid);
+    // temporary restriction
+    av_assert0(loc.nb_flow_ids == 1);
+
+    logv(NULL, "MXL probe domain: \"%s\"\n", loc.domain_path);
+    for (int i = 0; i < loc.nb_flow_ids; i++)
+        logv(NULL, "MXL probe flow id: \"%s\"\n", loc.flow_ids[i]);
 
     score = AVPROBE_SCORE_EXTENSION;
 
-    mxl_instance = mxlCreateInstance(pr.domain_path, NULL);
+    mxl_instance = mxlCreateInstance(loc.domain_path, NULL);
     if (NULL == mxl_instance) {
         logv(NULL, "mxlCreateInstance error\n");
         goto finally;
     }
 
-    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, pr.flowid, "",
+    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, loc.flow_ids[0], "",
                                                &flow_reader);
     if (MXL_STATUS_OK != mxl_status) {
         logv(NULL, "mxlCreateFlowReader error %s for flow: \"%s\"\n",
-                    mxl_status_to_str(mxl_status), pr.flowid);
+                    mxl_status_to_str(mxl_status), loc.flow_ids[0]);
         goto finally;
     }
 
@@ -507,7 +365,7 @@ static int mxl_probe(const AVProbeData *p) {
     }
 
     bool active = false;
-    mxl_status = mxlIsFlowActive(mxl_instance, pr.flowid, &active);
+    mxl_status = mxlIsFlowActive(mxl_instance, loc.flow_ids[0], &active);
     if (MXL_STATUS_OK != mxl_status) {
         logv(NULL, "mxlIsFlowActive error %s\n",
                     mxl_status_to_str(mxl_status));
@@ -521,7 +379,7 @@ static int mxl_probe(const AVProbeData *p) {
 
 finally:
 
-    free_parse_result(&pr);
+    mxl_loc_free(&loc);
 
     if (flow_reader) {
         av_assert0(mxl_instance);
@@ -820,7 +678,7 @@ static int mxl_read_header(AVFormatContext *s)
 
     int exit_status = AVERROR_UNKNOWN;
 
-    ParseResult pr = {0};
+    mxl_loc loc = {0};
 
     mxlInstance mxl_instance = NULL;
     mxlFlowReader flow_reader = NULL;
@@ -838,24 +696,29 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    int rc = parse_resource_identifier(s, s->url, &pr);
+    int rc = mxl_loc_parse(NULL, s->url, &loc);
     if (rc) {
-        loge(s, "failed to parse resource identifier: %s\n", s->url);
+        loge(s, "failed to parse resource locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
-    av_assert0(pr.domain_path);
-    av_assert0(pr.flowid);
+    // mxl_loc parse invariants
+    av_assert0(loc.domain_path);
+    av_assert0(loc.flow_ids);
+    av_assert0(loc.nb_flow_ids >= 1);
 
-    mxl_instance = mxlCreateInstance(pr.domain_path, NULL);
+    // temporary restriction
+    av_assert0(loc.nb_flow_ids == 1);
+
+    mxl_instance = mxlCreateInstance(loc.domain_path, NULL);
     if (NULL == mxl_instance) {
         loge(s, "mxlCreateInstance error\n");
         exit_status = AVERROR(EIO);
         goto finally;
     }
 
-    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, pr.flowid, "",
+    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, loc.flow_ids[0], "",
                                                &flow_reader);
     if (MXL_STATUS_OK != mxl_status) {
         loge(s, "mxlCreateFlowReader error %s\n", mxl_status_to_str(mxl_status));
@@ -872,7 +735,7 @@ static int mxl_read_header(AVFormatContext *s)
     }
 
     bool active = false;
-    mxl_status = mxlIsFlowActive(mxl_instance, pr.flowid, &active);
+    mxl_status = mxlIsFlowActive(mxl_instance, loc.flow_ids[0], &active);
     if (mxl_status != MXL_STATUS_OK) {
         loge(s, "mxlIsFlowActive failed\n");
         exit_status = AVERROR(EIO);
@@ -886,11 +749,11 @@ static int mxl_read_header(AVFormatContext *s)
     }
 
     logv(s, "active flow with flowid %s in %s\n",
-                pr.flowid, pr.domain_path);
+                loc.flow_ids[0], loc.domain_path);
 
     size_t flow_def_json_size = 0;
     // initial call with NULL buffer gets size
-    mxl_status = mxlGetFlowDef(mxl_instance, pr.flowid, NULL, &flow_def_json_size);
+    mxl_status = mxlGetFlowDef(mxl_instance, loc.flow_ids[0], NULL, &flow_def_json_size);
     if (MXL_ERR_INVALID_ARG == mxl_status) {
         if (flow_def_json_size <= 0) {
             loge(s, "flow def buffer size sanity (%zu)\n", flow_def_json_size);
@@ -911,7 +774,7 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    mxl_status = mxlGetFlowDef(mxl_instance, pr.flowid, flow_def_json, &flow_def_json_size);
+    mxl_status = mxlGetFlowDef(mxl_instance, loc.flow_ids[0], flow_def_json, &flow_def_json_size);
     if (mxl_status != MXL_STATUS_OK) {
         loge(s, "mxlGetFlowDef failed\n");
         exit_status = AVERROR(EIO);
@@ -933,9 +796,9 @@ static int mxl_read_header(AVFormatContext *s)
     GET1(format, string1, &flow_def_doc, "format");
     GET1(media_type, string1, &flow_def_doc, "media_type");
 
-    if (!id.value || strcmp(id.value, pr.flowid) != 0) {
+    if (!id.value || strcmp(id.value, loc.flow_ids[0]) != 0) {
         loge(s, "flow id sanity, flow def id != flow path id, %s != %s\n",
-                  id.value, pr.flowid);
+                  id.value, loc.flow_ids[0]);
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
@@ -987,11 +850,11 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    p->domain_path = pr.domain_path;
-    pr.domain_path = NULL;
+    p->domain_path = loc.domain_path;
+    loc.domain_path = NULL;
 
-    p->flowid = pr.flowid;
-    pr.flowid = NULL;
+    p->flowid = loc.flow_ids[0];
+    loc.flow_ids[0] = NULL;
 
     p->mxl_instance = mxl_instance;
     mxl_instance = NULL;
@@ -1005,7 +868,7 @@ static int mxl_read_header(AVFormatContext *s)
 
 finally:
 
-    free_parse_result(&pr);
+    mxl_loc_free(&loc);
 
     mxl_json_doc_release(&flow_def_doc);
 

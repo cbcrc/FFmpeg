@@ -1,0 +1,564 @@
+testing mxl_loc: mxl resource location parser
+
+==== test case: abs_filesystem_path
+locator: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: abs_filesystem_path PASS
+==== test case: abs_filesystem_path_root
+locator: "/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: abs_filesystem_path_root PASS
+==== test case: rel_filesystem_path
+locator: "mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: rel_filesystem_path PASS
+==== test case: rel_filesystem_path_none
+locator: "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: rel_filesystem_path_none PASS
+==== test case: rel_filesystem_path_dot
+locator: "./71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: rel_filesystem_path_dot PASS
+==== test case: rel_filesystem_path_dot_dot
+locator: "../71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: ".."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: ".."
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: rel_filesystem_path_dot_dot PASS
+==== test case: abs_filesystem_no_flow
+locator: "/dev/shm/mxl"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_no_flow PASS
+==== test case: abs_filesystem_no_flow_root
+locator: "/"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_no_flow_root PASS
+==== test case: rel_filesystem_no_flow
+locator: "rel/shm/mxl"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "rel/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "rel/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: rel_filesystem_no_flow PASS
+==== test case: rel_filesystem_no_flow_pwd
+locator: "."
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "."
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: rel_filesystem_no_flow_pwd PASS
+==== test case: rel_filesystem_path_trailing_slash
+locator: "mxl/"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "mxl/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "mxl/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: rel_filesystem_path_trailing_slash PASS
+==== test case: rel_filesystem_path_double_sep
+locator: "mxl//71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "mxl/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "mxl/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: rel_filesystem_path_double_sep PASS
+==== test case: abs_filesystem_path_zero_flow
+locator: "/tests/data/tmp/mxl"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/tests/data/tmp/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/tests/data/tmp/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_zero_flow PASS
+==== test case: abs_filesystem_path_wrong_ext
+locator: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.txt"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.txt"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.txt"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_wrong_ext PASS
+==== test case: abs_filesystem_path_trailing_ext_junk
+locator: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow.tmp"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow.tmp"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow.tmp"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_trailing_ext_junk PASS
+==== test case: abs_filesystem_path_no_ext
+locator: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_no_ext PASS
+==== test case: abs_filesystem_path_upcase_id
+locator: "/dev/shm/mxl/71F000DC-2578-4A06-B4EF-3E0E2B1E46E1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71F000DC-2578-4A06-B4EF-3E0E2B1E46E1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71F000DC-2578-4A06-B4EF-3E0E2B1E46E1"
+            ]
+}
+==== test case: abs_filesystem_path_upcase_id PASS
+==== test case: abs_filesystem_path_double_sep_a
+locator: "//dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "//dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "//dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: abs_filesystem_path_double_sep_a PASS
+==== test case: abs_filesystem_path_double_sep_b
+locator: "/dev/shm//mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm//mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm//mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: abs_filesystem_path_double_sep_b PASS
+==== test case: abs_filesystem_path_double_sep_c
+locator: "/dev/shm/mxl//71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: abs_filesystem_path_double_sep_c PASS
+==== test case: abs_filesystem_directory_named_flow
+locator: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow/"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl/71f000dc-2578-4a06-b4ef-3e0e2b1e46e1.mxl-flow/"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_directory_named_flow PASS
+==== test case: uri_zero_flow
+locator: "mxl:///dev/shm/mxl"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: uri_zero_flow PASS
+==== test case: uri_one_flow
+locator: "mxl:///dev/shm/mxl?id=71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 1
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+            ]
+}
+==== test case: uri_one_flow PASS
+==== test case: uri_two_flow
+locator: "mxl:///dev/shm/mxl?id=71f000dc-2578-4a06-b4ef-3e0e2b1e46e1&id=ee43ad87-1ff5-43f5-a895-9cedbcc8884a"
+expected return code: 0
+actual return code: 0
+expected locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 2
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+             "ee43ad87-1ff5-43f5-a895-9cedbcc8884a"
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "/dev/shm/mxl"
+  nb_flow_ids: 2
+  flow_ids: [
+             "71f000dc-2578-4a06-b4ef-3e0e2b1e46e1"
+             "ee43ad87-1ff5-43f5-a895-9cedbcc8884a"
+            ]
+}
+==== test case: uri_two_flow PASS
+==== test case: abs_filesystem_path_bad_id
+locator: "/dev/shm/mxl/bad_id.mxl-flow"
+expected return code: -22
+actual return code: -22
+expected locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_bad_id PASS
+==== test case: abs_filesystem_path_missing_id
+locator: "/dev/shm/mxl/.mxl-flow"
+expected return code: -22
+actual return code: -22
+expected locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: abs_filesystem_path_missing_id PASS
+==== test case: null_locator
+locator: "(null)"
+expected return code: -22
+actual return code: -22
+expected locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: null_locator PASS
+==== test case: empty_locator
+locator: ""
+expected return code: -2
+actual return code: -2
+expected locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+actual locator:
+mxl_loc {
+  domain_path: "(null)"
+  nb_flow_ids: 0
+  flow_ids: [
+            ]
+}
+==== test case: empty_locator PASS
+
+PASS

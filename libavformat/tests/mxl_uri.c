@@ -28,19 +28,24 @@
 #include <stdio.h>
 #include <string.h>
 
+typedef struct mxl_uri_const {
+    const char *host;
+    int port;
+    const char *domain;
+    const char * const *flow_ids;
+    int nb_flow_ids;
+}  mxl_uri_const;
+
 typedef struct test_case {
     const char *name;
     const char *uri;
     int expected_rc;
-    mxl_uri expected;
+    mxl_uri_const expected;
 } test_case;
 
-static int compare_uri(const mxl_uri *expected, const mxl_uri *actual)
+static int compare_uri(const mxl_uri_const *expected, const mxl_uri *actual)
 {
-    if (!expected || !actual) {
-        fprintf(stderr, "compare_uri: expected or actual is NULL\n");
-        return -1;
-    }
+    av_assert0(expected && actual);
 
     if (expected->port != actual->port) {
         fprintf(stderr, "compare_uri: port mismatch: expected %d actual %d\n",
@@ -68,7 +73,8 @@ static int compare_uri(const mxl_uri *expected, const mxl_uri *actual)
         return -1;
     }
 
-    if (expected->domain && strcmp(expected->domain, actual->domain) != 0) {
+    if (expected->domain && actual->domain &&
+        strcmp(expected->domain, actual->domain) != 0) {
         fprintf(stderr, "compare_uri: domain mismatch: expected '%s' actual '%s'\n",
                 expected->domain, actual->domain);
         return -1;
@@ -129,6 +135,19 @@ static void dump_uri(const mxl_uri *u)
     printf("}\n");
 }
 
+static void dump_expected_uri(const mxl_uri_const* expected_uri)
+{
+    mxl_uri uri = {
+        .host = (char *)expected_uri->host,
+        .port = expected_uri->port,
+        .domain = (char *)expected_uri->domain,
+        .flow_ids = (char **)expected_uri->flow_ids,
+        .nb_flow_ids = expected_uri->nb_flow_ids
+    };
+
+    dump_uri(&uri);
+}
+
 static void dump_test_case(const test_case *tc, int actual_parse_rc, const mxl_uri *actual)
 {
     printf("==== test case: %s\n", tc->name);
@@ -139,7 +158,7 @@ static void dump_test_case(const test_case *tc, int actual_parse_rc, const mxl_u
     printf("actual return code: %d\n", actual_parse_rc);
 
     printf("expected URI:\n");
-    dump_uri(&tc->expected);
+    dump_expected_uri(&tc->expected);
     printf("actual URI:\n");
     dump_uri(actual);
 }
@@ -159,8 +178,8 @@ static int verify_invariants(int parse_rc, const mxl_uri* actual) {
     }
     else {
         /* parse failure invariants */
-        if (!actual->host && actual->port <= -1 && !actual->domain &&
-            actual->nb_flow_ids == 0 && !actual->flow_ids) {
+        if (!actual->domain &&
+            actual->nb_flow_ids == 0 && actual->flow_ids == NULL) {
             return 0;
         }
     }
@@ -171,12 +190,11 @@ static int verify_invariants(int parse_rc, const mxl_uri* actual) {
 static int run_test_case(const test_case *tc)
 {
     mxl_uri actual = {0};
-    int parse_rc = -1;
     int invariants_rc = -1;
     int compare_rc = -1;
     int test_case_rc = -1;
 
-    parse_rc = mxl_parse_uri(NULL, tc->uri, &actual);
+    int parse_rc = mxl_parse_uri(NULL, tc->uri, &actual);
 
     dump_test_case(tc, parse_rc, &actual);
 
@@ -215,7 +233,7 @@ finally:
 }
 
 // expected mxl_uri value on error
-static const mxl_uri expected_error_uri = {
+static const mxl_uri_const expected_error_uri = {
     .host = NULL,
     .port = -1,
     .domain = NULL,
@@ -1147,7 +1165,7 @@ static test_case empty_domain_path_no_query_trailing_slash = {
 };
 
 static const test_case *tests[] = {
-    // happy path cases
+    /* happy path cases */
     &zero_id,
     &one_id,
     &two_id,
@@ -1164,7 +1182,7 @@ static const test_case *tests[] = {
     &local_domain_triple_slash,
     &local_domain_single_slash,
 
-    // boundary cases
+    /* boundary cases */
     &zero_port,
     &fragment_after_query,
     &valid_at_range_limit_port,
@@ -1186,7 +1204,7 @@ static const test_case *tests[] = {
     &empty_domain_path_no_query,
     &empty_domain_path_no_query_trailing_slash,
 
-    // aberrant cases
+    /* aberrant cases */
     &bad_scheme,
     &no_scheme,
     &foo_after_scheme,
@@ -1331,7 +1349,6 @@ static int test_scheme_prefix_check(void)
 
 int main(void)
 {
-
     printf("testing mxl_uri: mxl URI parser\n\n");
 
     av_log_set_level(AV_LOG_QUIET);
