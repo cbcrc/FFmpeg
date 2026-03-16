@@ -731,6 +731,25 @@ mxl_uri {
   flow_ids (0):
 }
 ==== test case: empty_domain_path_no_query_trailing_slash PASS
+==== test case: non_unique_flow_ids
+URI: "mxl:///host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc&id=3645f1e2-90fc-49cb-af9c-236c2ac124cd"
+expected return code: -22
+actual return code: -22
+expected URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+actual URI:
+mxl_uri {
+  host: "(null)"
+  port: -1
+  domain: "(null)"
+  flow_ids (0):
+}
+==== test case: non_unique_flow_ids PASS
 ==== test case: bad_scheme
 URI: "ftp://host1.local/domain/path?id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&id=876fc244-9c99-48a8-a461-927e43a05bdc"
 expected return code: -22

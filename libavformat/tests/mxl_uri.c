@@ -1164,6 +1164,21 @@ static test_case empty_domain_path_no_query_trailing_slash = {
     .expected = expected_error_uri
 };
 
+static test_case non_unique_flow_ids = {
+    .name = "non_unique_flow_ids",
+
+    .uri =
+        "mxl:///host1.local/domain/path?"
+        "id=3645f1e2-90fc-49cb-af9c-236c2ac124cd&"
+        "id=876fc244-9c99-48a8-a461-927e43a05bdc&"
+        "id=3645f1e2-90fc-49cb-af9c-236c2ac124cd",
+
+    .expected_rc = AVERROR(EINVAL),
+
+    .expected = expected_error_uri
+};
+
+
 static const test_case *tests[] = {
     /* happy path cases */
     &zero_id,
@@ -1203,6 +1218,7 @@ static const test_case *tests[] = {
     &empty_domain_path,
     &empty_domain_path_no_query,
     &empty_domain_path_no_query_trailing_slash,
+    &non_unique_flow_ids,
 
     /* aberrant cases */
     &bad_scheme,

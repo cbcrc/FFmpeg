@@ -1,7 +1,9 @@
 /*
  * MXL demuxer for Media eXchange Layer flows
  *
- * AVFMT_NOFILE demuxer; requires "/path/to/domain/<id>.mxl-flow"
+ * AVFMT_NOFILE demuxer; requires either
+ *     "/path/to/domain/<flow_id>.mxl-flow"
+ *  or "mxl:///path/to/domain?id=<flow_id>[&id=<flow_id>]"
  *
  * Copyright (c) 2025 CBC/Radio-Canada
  *
@@ -90,22 +92,33 @@ typedef enum FlowType {
     AUDIO_FLOW = 2
 } FlowType;
 
-union FlowState {
+typedef union FlowState {
     VideoState video;
     AudioState audio;
-};
+} FlowState;
+
+typedef struct StreamContext {
+    mxlFlowReader mxl_flow_reader;
+    FlowType flow_type;
+    FlowState flow;
+    int stream_index;
+} StreamContext;
+
+typedef struct MXLTuningParams {
+    int audio_samples_per_read;
+    bool video_blocking_read;
+} MXLTuningParams;
 
 typedef struct MXLContext {
 
     const AVClass *class;
 
-    // domain and flowid parsed out of input url
-    char *domain_path;
-    char *flowid;
+    // domain and flow_ids parsed out of input url
+    mxl_loc loc;
 
     // options
     int zero_copy;
-    int non_blocking;
+    int blocking;
     int reset_on_drop;
     int max_video_frames;
     int max_audio_samples;
@@ -115,13 +128,19 @@ typedef struct MXLContext {
 
     // interface objects
     mxlInstance mxl_instance;
-    mxlFlowReader mxl_flow_reader;
 
-    // flow state
-    FlowType flow_type;
-    union FlowState flow;
-    int stream_index;
+    // stream context array (size is loc.nb_flow_ids)
+    StreamContext* stream_contexts;
+
+    // stream configuration dependant tuning parameters
+    MXLTuningParams tuning;
+
+    // flag end of streams
     bool at_eof;
+
+    // the index of the next stream context to read
+    int next_stream_context_idx;
+
 } MXLContext;
 
 
@@ -140,12 +159,12 @@ static const AVOption mxl_options[] = {
         .flags       = FLAGS
     },
     {
-        .name = "non_blocking",
-        .help = "Don't block waiting for video data",
-        .offset = OFFSET(non_blocking),
-        .type = AV_OPT_TYPE_BOOL,
-        .default_val = { .i64 = 0 },
-        .min = 0,
+        .name = "blocking",
+        .help = "Use blocking video read: auto (default), 0=non-blocking, 1=blocking" ,
+        .offset = OFFSET(blocking),
+        .type = AV_OPT_TYPE_INT,
+        .default_val = { .i64 = -1 },
+        .min = -1,
         .max = 1,
         .flags = FLAGS
     },
@@ -294,6 +313,64 @@ static void log_format_context(const AVFormatContext *s)
     logv(s, "  url: %s\n", s->url ? s->url : "(null)");
 }
 
+static bool probe_is_flow_active(mxlInstance mxl_instance, const char* flow_id)
+{
+    bool active = false;
+    mxlFlowReader flow_reader = NULL;
+
+    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, flow_id, "",
+                                               &flow_reader);
+
+    if (MXL_STATUS_OK != mxl_status) {
+        logv(NULL, "mxlCreateFlowReader error %s for flow: \"%s\"\n",
+                    mxl_status_to_str(mxl_status), flow_id);
+        goto finally;
+    }
+
+    mxlFlowInfo info = {0};
+    mxl_status = mxlFlowReaderGetInfo(flow_reader, &info);
+    if (MXL_STATUS_OK != mxl_status) {
+        logv(NULL, "mxlFlowReaderGetInfo error %s\n",
+                    mxl_status_to_str(mxl_status));
+        goto finally;
+    }
+
+    mxl_status = mxlIsFlowActive(mxl_instance, flow_id, &active);
+    if (MXL_STATUS_OK != mxl_status) {
+        logv(NULL, "mxlIsFlowActive error %s\n",
+                    mxl_status_to_str(mxl_status));
+        goto finally;
+    }
+
+finally:
+
+    if (flow_reader) {
+        av_assert0(mxl_instance);
+        mxl_status = mxlReleaseFlowReader(mxl_instance, flow_reader);
+        if (MXL_STATUS_OK != mxl_status)
+            logw(NULL, "mxlReleaseFlowReader error %s for flow_id %s\n",
+                 mxl_status_to_str(mxl_status), flow_id);
+    }
+
+    return active;
+}
+
+
+static int probe_validate_locator(const mxl_loc* loc) {
+    av_assert0(loc);
+
+    if (loc->nb_flow_ids < 1) {
+        logv(NULL, "MXL locator requires at least one flow ID\n");
+        return -1;
+    }
+
+    // mxl_loc invariants (for nb_flow_ids > 0)
+    av_assert0(loc->domain_path);
+    av_assert0(loc->flow_ids);
+
+    return 0;
+}
+
 
 /**
  * Identify MXL flow inputs by filename pattern and state.
@@ -315,30 +392,23 @@ static int mxl_probe(const AVProbeData *p) {
     log_probe_data(p);
 
     mxlInstance mxl_instance = NULL;
-    mxlFlowReader flow_reader = NULL;
     int score = 0;
+    mxl_loc loc = {0};
 
     if (!p->filename)
         goto finally;
 
-    mxl_loc loc = {0};
     int rc = mxl_loc_parse(NULL, p->filename, &loc);
     if (rc) {
         logv(NULL, "MXL failed to parse locator: \"%s\"\n", p->filename);
         goto finally;
     }
 
-    // mxl_loc parse invariants
-    av_assert0(loc.domain_path);
-    av_assert0(loc.flow_ids);
-    av_assert0(loc.nb_flow_ids >= 1);
-
-    // temporary restriction
-    av_assert0(loc.nb_flow_ids == 1);
-
-    logv(NULL, "MXL probe domain: \"%s\"\n", loc.domain_path);
-    for (int i = 0; i < loc.nb_flow_ids; i++)
-        logv(NULL, "MXL probe flow id: \"%s\"\n", loc.flow_ids[i]);
+    rc = probe_validate_locator(&loc);
+    if (rc) {
+        logv(NULL, "MXL invalid locator: %s\n", p->filename);
+        goto finally;
+    }
 
     score = AVPROBE_SCORE_EXTENSION;
 
@@ -348,31 +418,21 @@ static int mxl_probe(const AVProbeData *p) {
         goto finally;
     }
 
-    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, loc.flow_ids[0], "",
-                                               &flow_reader);
-    if (MXL_STATUS_OK != mxl_status) {
-        logv(NULL, "mxlCreateFlowReader error %s for flow: \"%s\"\n",
-                    mxl_status_to_str(mxl_status), loc.flow_ids[0]);
-        goto finally;
+    logv(NULL, "MXL probe domain: \"%s\"\n", loc.domain_path);
+    logv(NULL, "MXL probe %d flows:\n", loc.nb_flow_ids);
+    int i = 0;
+    for (i = 0; i < loc.nb_flow_ids; i++)
+        logv(NULL, "  flow id: \"%s\"\n", loc.flow_ids[i]);
+
+    bool all_flows_active = true;
+    for (i = 0; i < loc.nb_flow_ids; i++) {
+        if (!probe_is_flow_active(mxl_instance, loc.flow_ids[i])) {
+            all_flows_active = false;
+            goto finally;
+        }
     }
 
-    mxlFlowInfo info = {0};
-    mxl_status = mxlFlowReaderGetInfo(flow_reader, &info);
-    if (MXL_STATUS_OK != mxl_status) {
-        logv(NULL, "mxlFlowReaderGetInfo error %s\n",
-                    mxl_status_to_str(mxl_status));
-        goto finally;
-    }
-
-    bool active = false;
-    mxl_status = mxlIsFlowActive(mxl_instance, loc.flow_ids[0], &active);
-    if (MXL_STATUS_OK != mxl_status) {
-        logv(NULL, "mxlIsFlowActive error %s\n",
-                    mxl_status_to_str(mxl_status));
-        goto finally;
-    }
-
-    if (active)
+    if (all_flows_active)
         score = AVPROBE_SCORE_MAX;
     else
         score = (score + AVPROBE_SCORE_MAX)/2;
@@ -381,15 +441,8 @@ finally:
 
     mxl_loc_free(&loc);
 
-    if (flow_reader) {
-        av_assert0(mxl_instance);
-        mxl_status = mxlReleaseFlowReader(mxl_instance, flow_reader);
-        if (MXL_STATUS_OK != mxl_status)
-            logw(NULL, "mxlReleaseFlowReader error %s\n", mxl_status_to_str(mxl_status));
-    }
-
     if (mxl_instance) {
-        mxl_status = mxlDestroyInstance(mxl_instance);
+        mxlStatus mxl_status = mxlDestroyInstance(mxl_instance);
         if (MXL_STATUS_OK != mxl_status)
             logw(NULL, "mxlDestroyInstance error %s\n", mxl_status_to_str(mxl_status));
     }
@@ -401,11 +454,11 @@ finally:
             reason = MXL_DOT_FLOW_EXT " extension or URI scheme match";
         }
         else if (score < AVPROBE_SCORE_MAX) {
-            reason = "inactive flow";
+            reason = "one or more flows is inactive";
         }
         else {
             av_assert0(score == AVPROBE_SCORE_MAX);
-            reason = "active flow";
+            reason = "all flows are active";
         }
 
         logv(NULL, "MXL probe successful (%s)\n", reason);
@@ -457,9 +510,9 @@ static inline int pos_int_range_sanity(AVFormatContext *s, double value, const c
 
 static int read_video_header(AVFormatContext *s, mxlFlowInfo *flow_info,
                              mxl_json_doc *flow_def_doc, AVStream *st,
-                             const char* media_type)
+                             FlowState* flow_state, const char* media_type)
 {
-    av_assert0(s && flow_info && flow_def_doc && st && media_type);
+    av_assert0(s && flow_info && flow_def_doc && st && flow_state && media_type);
 
     int exit_status = AVERROR_UNKNOWN;
 
@@ -518,10 +571,9 @@ static int read_video_header(AVFormatContext *s, mxlFlowInfo *flow_info,
 
     SET_META(st, "mxl_colorspace", colorspace.value);
 
-    MXLContext *p = s->priv_data;
-    p->flow.video.mxl_grain_rate = flow_info->config.common.grainRate;
-    p->flow.video.mxl_start_grain_index = 0;
-    p->flow.video.mxl_grain_index = 0;
+    flow_state->video.mxl_grain_rate = flow_info->config.common.grainRate;
+    flow_state->video.mxl_start_grain_index = 0;
+    flow_state->video.mxl_grain_index = 0;
 
     exit_status = 0;
 
@@ -558,9 +610,9 @@ static int init_swr_context(struct SwrContext **swr_context,
 
 static int read_audio_header(AVFormatContext *s, mxlFlowInfo *flow_info,
                              mxl_json_doc *flow_def_doc, AVStream *st,
-                             const char* media_type)
+                             FlowState* flow_state, const char* media_type)
 {
-    av_assert0(s && flow_info && flow_def_doc && st && media_type);
+    av_assert0(s && flow_info && flow_def_doc && st && flow_state && media_type);
 
     int exit_status = AVERROR_UNKNOWN;
 
@@ -642,9 +694,8 @@ static int read_audio_header(AVFormatContext *s, mxlFlowInfo *flow_info,
     st->time_base     = (AVRational){ 1, st->codecpar->sample_rate };
     st->avg_frame_rate = (AVRational){ 0, 1 };
 
-    MXLContext  *p = s->priv_data;
-    p->flow.audio.mxl_sample_rate = flow_info->config.common.grainRate;
-    int rc = init_swr_context(&p->flow.audio.swr_context,
+    flow_state->audio.mxl_sample_rate = flow_info->config.common.grainRate;
+    int rc = init_swr_context(&flow_state->audio.swr_context,
                               st->codecpar->ch_layout.nb_channels,
                               st->codecpar->sample_rate);
     if (rc < 0) {
@@ -658,6 +709,317 @@ static int read_audio_header(AVFormatContext *s, mxlFlowInfo *flow_info,
 finally:
 
     return exit_status;
+}
+
+static int read_flow(AVFormatContext *s, mxlInstance mxl_instance,
+                     const char* flow_id, StreamContext* stream_ctx)
+{
+    av_assert0(s && s->priv_data &&
+               mxl_instance && flow_id &&
+               stream_ctx);
+
+    int exit_status = AVERROR_UNKNOWN;
+    mxlFlowReader flow_reader = NULL;
+    FlowType flow_type = UNDEFINED_FLOW;
+    FlowState flow_state = {0};
+
+    char *flow_def_json = NULL;
+    mxl_json_doc flow_def_doc = {0};
+    mxl_json_str id = {0};
+    mxl_json_str desc = {0};
+    mxl_json_str label = {0};
+    mxl_json_str format = {0};
+    mxl_json_str media_type = {0};
+    char *unescaped_media_type = NULL;
+
+    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, flow_id, "",
+                                               &flow_reader);
+    if (MXL_STATUS_OK != mxl_status) {
+        loge(s, "mxlCreateFlowReader error %s for flow ID %s\n",
+             mxl_status_to_str(mxl_status), flow_id);
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    mxlFlowInfo flow_info = {0};
+    mxl_status = mxlFlowReaderGetInfo(flow_reader, &flow_info);
+    if (mxl_status != MXL_STATUS_OK) {
+        loge(s, "mxlFlowReaderGetInfo failed\n");
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    bool active = false;
+    mxl_status = mxlIsFlowActive(mxl_instance, flow_id, &active);
+    if (mxl_status != MXL_STATUS_OK) {
+        loge(s, "mxlIsFlowActive failed\n");
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    if (!active) {
+        loge(s, "flow exists but is not active\n");
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    logv(s, "active flow with ID %s\n", flow_id);
+
+    size_t flow_def_json_size = 0;
+    // initial call with NULL buffer gets size
+    mxl_status = mxlGetFlowDef(mxl_instance, flow_id, NULL, &flow_def_json_size);
+    if (MXL_ERR_INVALID_ARG == mxl_status) {
+        if (flow_def_json_size <= 0) {
+            loge(s, "flow def buffer size sanity (%zu)\n", flow_def_json_size);
+            exit_status = AVERROR(EIO);
+            goto finally;
+        }
+
+        flow_def_json = av_malloc(flow_def_json_size);
+        if (!flow_def_json) {
+            loge(s, "failed to allocate flow_def_json of size %zu\n", flow_def_json_size);
+            exit_status = AVERROR(ENOMEM);
+            goto finally;
+        }
+    }
+    else {
+        loge(s, "unexpected mxlGetFlowDef status (%s)\n", mxl_status_to_str(mxl_status));
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    mxl_status = mxlGetFlowDef(mxl_instance, flow_id, flow_def_json, &flow_def_json_size);
+    if (mxl_status != MXL_STATUS_OK) {
+        loge(s, "mxlGetFlowDef failed\n");
+        exit_status = AVERROR(EIO);
+        goto finally;
+    }
+
+    logv(s, "good flow definition read for flow ID %s:\n%s\n", flow_id, flow_def_json);
+
+    int json_status = mxl_json_doc_build(flow_def_json, &flow_def_doc);
+    if (json_status) {
+        loge(s, "json flow def parse error %d\n", json_status);
+        exit_status = AVERROR_INVALIDDATA;
+        goto finally;
+    }
+
+    GET1(id, string1, &flow_def_doc, "id");
+    GET1(desc, string1, &flow_def_doc, "description");
+    GET1(label, string1, &flow_def_doc, "label");
+    GET1(format, string1, &flow_def_doc, "format");
+    GET1(media_type, string1, &flow_def_doc, "media_type");
+
+    if (!id.value || av_strcasecmp(id.value, flow_id) != 0) {
+        loge(s, "flow id sanity, flow def ID != flow locator ID, %s != %s\n",
+                  id.value, flow_id);
+        exit_status = AVERROR_INVALIDDATA;
+        goto finally;
+    }
+
+    AVStream *st = avformat_new_stream(s, NULL);
+    if (!st) {
+        loge(s, "failed to allocate new stream\n");
+        exit_status = AVERROR(ENOMEM);
+        goto finally;
+    }
+
+    const char *buf = media_type.value;
+    unescaped_media_type = av_get_token(&buf, "");
+    if (!unescaped_media_type) {
+        loge(s, "failed to allocate unescaped_media_type\n");
+        exit_status = AVERROR(ENOMEM);
+        goto finally;
+    }
+
+    SET_META(st, "mxl_id", id.value);
+    SET_META(st, "mxl_description", desc.value);
+    SET_META(st, "mxl_label", label.value);
+    SET_META(st, "mxl_format", format.value);
+    SET_META(st, "mxl_media_type", unescaped_media_type);
+
+    if ( strcmp(unescaped_media_type, "audio/float32") == 0 ) {
+        flow_type = AUDIO_FLOW;
+        int rc = read_audio_header(s, &flow_info, &flow_def_doc, st, &flow_state,
+                                   unescaped_media_type);
+        if (rc) {
+            loge(s, "read audio header error\n");
+            exit_status = rc;
+            goto finally;
+        }
+    }
+    else if ( strcmp(unescaped_media_type, "video/v210") == 0 ) {
+        flow_type = VIDEO_FLOW;
+        int rc = read_video_header(s, &flow_info, &flow_def_doc, st, &flow_state,
+                                   unescaped_media_type);
+        if (rc) {
+            loge(s, "read video header error\n");
+            exit_status = rc;
+            goto finally;
+        }
+    }
+    else {
+        loge(s, "unsupported media_type \"%s\"\n", unescaped_media_type);
+        exit_status = AVERROR_INVALIDDATA;
+        goto finally;
+    }
+
+    // success, transfer state to stream_ctx
+
+    stream_ctx->mxl_flow_reader = flow_reader;
+    flow_reader = NULL;
+
+    stream_ctx->flow_type = flow_type;
+    flow_type = UNDEFINED_FLOW;
+
+    stream_ctx->flow= flow_state;
+    memset(&flow_state, 0, sizeof(flow_state));
+
+    stream_ctx->stream_index = st->index;
+
+    exit_status = 0;
+
+finally:
+
+    mxl_json_doc_release(&flow_def_doc);
+
+    av_free(id.value);
+    av_free(desc.value);
+    av_free(label.value);
+    av_free(format.value);
+    av_free(media_type.value);
+    av_free(unescaped_media_type);
+    av_free(flow_def_json);
+
+    if (flow_reader) {
+        av_assert0(mxl_instance);
+        mxl_status = mxlReleaseFlowReader(mxl_instance, flow_reader);
+        if (MXL_STATUS_OK != mxl_status)
+            logw(s, "mxlReleaseFlowReader error %s\n", mxl_status_to_str(mxl_status));
+    }
+
+
+    return exit_status;
+}
+
+/**
+ * Examine the configured flows and compute tuning parameters to
+ * optimize FFmpeg's streaming performance.
+ * 1. audio samples per read set to one video frame, or 1/60s
+ * 2. video blocking read set to false if both audio and video flows exit
+ */
+static void header_init_tuning_params(AVFormatContext *s)
+{
+    av_assert0(s);
+
+    MXLContext *p = s->priv_data;
+
+    AVStream *vst = NULL;
+    AVStream *ast = NULL;
+    for (int i = 0; i < s->nb_streams; i++) {
+        AVStream *st = s->streams[i];
+        if (st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO && !vst)
+            vst = st;
+        else if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO && !ast)
+            ast = st;
+    }
+
+    StreamContext *vctx = NULL;
+    StreamContext *actx = NULL;
+    for (int i = 0; i < p->loc.nb_flow_ids; i++) {
+        if (p->stream_contexts[i].flow_type == VIDEO_FLOW && !vctx)
+            vctx = &p->stream_contexts[i];
+        else if (p->stream_contexts[i].flow_type == AUDIO_FLOW && !actx)
+            actx = &p->stream_contexts[i];
+    }
+
+    int audio_samples_per_frame = 0;
+    if (ast && vst) {
+        av_assert0(actx && vctx);
+
+        mxlRational frame_rate = vctx->flow.video.mxl_grain_rate;
+        av_assert0(frame_rate.numerator && frame_rate.denominator);
+
+        mxlRational sample_rate = actx->flow.audio.mxl_sample_rate;
+        av_assert0(sample_rate.numerator && sample_rate.denominator == 1);
+
+        audio_samples_per_frame = av_rescale_q(
+            sample_rate.numerator,
+            (AVRational){frame_rate.denominator, frame_rate.numerator},
+            (AVRational){1, 1});
+    }
+    else if (ast) {
+        av_assert0(actx);
+
+        mxlRational sample_rate = actx->flow.audio.mxl_sample_rate;
+        av_assert0(sample_rate.numerator && sample_rate.denominator == 1);
+
+        // 16.66 ms = 1/60 second
+        audio_samples_per_frame = sample_rate.numerator / 60;
+    }
+
+    p->tuning.audio_samples_per_read = audio_samples_per_frame;
+    p->tuning.video_blocking_read = !(ast && vst);
+
+    logv(s, "tuned audio_samples_per_read = %d\n", p->tuning.audio_samples_per_read);
+    logv(s, "tuned video_blocking_read = %d\n", p->tuning.video_blocking_read);
+}
+
+static void release_stream_context(AVFormatContext *s,
+                                   mxlInstance mxl_instance, StreamContext* stream_ctx)
+{
+    if (stream_ctx->mxl_flow_reader) {
+        av_assert0(mxl_instance);
+        if (MXL_STATUS_OK != mxlReleaseFlowReader(mxl_instance, stream_ctx->mxl_flow_reader))
+            logw(s, "mxlReleaseFlowReader error\n");
+        stream_ctx->mxl_flow_reader = NULL;
+    }
+
+    switch(stream_ctx->flow_type) {
+    case VIDEO_FLOW:
+        stream_ctx->flow.video = (VideoState){0};
+        break;
+    case AUDIO_FLOW:
+        swr_free(&stream_ctx->flow.audio.swr_context);
+        stream_ctx->flow.audio = (AudioState){0};
+        break;
+    default:
+        logw(s, "unknown flow_type\n");
+    }
+}
+
+/**
+ * Reject configurations that have more than one video or more than
+ * one audio flow.
+ */
+static int header_validate_flows(AVFormatContext *s)
+{
+    av_assert0(s);
+    MXLContext *p = s->priv_data;
+
+    int audio_count = 0;
+    int video_count = 0;
+    for (int i = 0; i < p->loc.nb_flow_ids; i++) {
+        switch(p->stream_contexts[i].flow_type) {
+        case AUDIO_FLOW:
+            audio_count++;
+            break;
+        case VIDEO_FLOW:
+            video_count++;
+            break;
+        }
+    }
+
+    if (audio_count > 1) {
+        loge(s, "MXL does not support multiple audio flows\n");
+        return -1;
+    }
+    else if (video_count > 1) {
+        loge(s, "MXL does not support multiple video flows\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 /**
@@ -679,17 +1041,11 @@ static int mxl_read_header(AVFormatContext *s)
     int exit_status = AVERROR_UNKNOWN;
 
     mxl_loc loc = {0};
-
     mxlInstance mxl_instance = NULL;
-    mxlFlowReader flow_reader = NULL;
+    StreamContext *stream_contexts = NULL;
+    int initialized_stream_contexts_count = 0;
 
-    char *flow_def_json = NULL;
-    mxl_json_doc flow_def_doc = {0};
-    mxl_json_str id = {0};
-    mxl_json_str desc = {0};
-    mxl_json_str label = {0};
-    mxl_json_str format = {0};
-    mxl_json_str media_type = {0};
+    MXLContext *p = s->priv_data;
 
     if (!s->url) {
         exit_status = AVERROR(EINVAL);
@@ -698,18 +1054,20 @@ static int mxl_read_header(AVFormatContext *s)
 
     int rc = mxl_loc_parse(NULL, s->url, &loc);
     if (rc) {
-        loge(s, "failed to parse resource locator: %s\n", s->url);
+        logv(s, "MXL failed to parse resource locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
+        goto finally;
+    }
+
+    if (loc.nb_flow_ids < 1) {
+        exit_status = AVERROR(EINVAL);
+        logv(s, "MXL locator requires at least one flow ID\n");
         goto finally;
     }
 
     // mxl_loc parse invariants
     av_assert0(loc.domain_path);
     av_assert0(loc.flow_ids);
-    av_assert0(loc.nb_flow_ids >= 1);
-
-    // temporary restriction
-    av_assert0(loc.nb_flow_ids == 1);
 
     mxl_instance = mxlCreateInstance(loc.domain_path, NULL);
     if (NULL == mxl_instance) {
@@ -718,151 +1076,43 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    mxlStatus mxl_status = mxlCreateFlowReader(mxl_instance, loc.flow_ids[0], "",
-                                               &flow_reader);
-    if (MXL_STATUS_OK != mxl_status) {
-        loge(s, "mxlCreateFlowReader error %s\n", mxl_status_to_str(mxl_status));
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    mxlFlowInfo flow_info = {0};
-    mxl_status = mxlFlowReaderGetInfo(flow_reader, &flow_info);
-    if (mxl_status != MXL_STATUS_OK) {
-        loge(s, "mxlFlowReaderGetInfo failed\n");
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    bool active = false;
-    mxl_status = mxlIsFlowActive(mxl_instance, loc.flow_ids[0], &active);
-    if (mxl_status != MXL_STATUS_OK) {
-        loge(s, "mxlIsFlowActive failed\n");
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    if (!active) {
-        loge(s, "flow exists but is not active\n");
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    logv(s, "active flow with flowid %s in %s\n",
-                loc.flow_ids[0], loc.domain_path);
-
-    size_t flow_def_json_size = 0;
-    // initial call with NULL buffer gets size
-    mxl_status = mxlGetFlowDef(mxl_instance, loc.flow_ids[0], NULL, &flow_def_json_size);
-    if (MXL_ERR_INVALID_ARG == mxl_status) {
-        if (flow_def_json_size <= 0) {
-            loge(s, "flow def buffer size sanity (%zu)\n", flow_def_json_size);
-            exit_status = AVERROR(EIO);
-            goto finally;
-        }
-
-        flow_def_json = av_malloc(flow_def_json_size);
-        if (!flow_def_json) {
-            loge(s, "failed to allocate flow_def_json of size %zu\n", flow_def_json_size);
-            exit_status = AVERROR(ENOMEM);
-            goto finally;
-        }
-    }
-    else {
-        loge(s, "unexpected mxlGetFlowDef status (%s)\n", mxl_status_to_str(mxl_status));
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    mxl_status = mxlGetFlowDef(mxl_instance, loc.flow_ids[0], flow_def_json, &flow_def_json_size);
-    if (mxl_status != MXL_STATUS_OK) {
-        loge(s, "mxlGetFlowDef failed\n");
-        exit_status = AVERROR(EIO);
-        goto finally;
-    }
-
-    logv(s, "good flow definition read:\n%s\n", flow_def_json);
-
-    int json_status = mxl_json_doc_build(flow_def_json, &flow_def_doc);
-    if (json_status) {
-        loge(s, "json flow def parse error %d\n", json_status);
-        exit_status = AVERROR_INVALIDDATA;
-        goto finally;
-    }
-
-    GET1(id, string1, &flow_def_doc, "id");
-    GET1(desc, string1, &flow_def_doc, "description");
-    GET1(label, string1, &flow_def_doc, "label");
-    GET1(format, string1, &flow_def_doc, "format");
-    GET1(media_type, string1, &flow_def_doc, "media_type");
-
-    if (!id.value || strcmp(id.value, loc.flow_ids[0]) != 0) {
-        loge(s, "flow id sanity, flow def id != flow path id, %s != %s\n",
-                  id.value, loc.flow_ids[0]);
-        exit_status = AVERROR_INVALIDDATA;
-        goto finally;
-    }
-
-    AVStream *st = avformat_new_stream(s, NULL);
-    if (!st) {
-        loge(s, "failed to allocate new stream\n");
+    stream_contexts = av_malloc_array(loc.nb_flow_ids, sizeof(StreamContext));
+    if (!stream_contexts) {
         exit_status = AVERROR(ENOMEM);
         goto finally;
     }
+    memset(stream_contexts, 0, loc.nb_flow_ids * sizeof(StreamContext));
 
-    const char *buf = media_type.value;
-    char *unescaped_media_type = av_get_token(&buf, "");
-    if (!unescaped_media_type) {
-        loge(s, "failed to allocate unescaped_media_type\n");
-        exit_status = AVERROR(ENOMEM);
-        goto finally;
-    }
-
-    SET_META(st, "mxl_id", id.value);
-    SET_META(st, "mxl_description", desc.value);
-    SET_META(st, "mxl_label", label.value);
-    SET_META(st, "mxl_format", format.value);
-    SET_META(st, "mxl_media_type", unescaped_media_type);
-
-    MXLContext *p = s->priv_data;
-
-    if ( strcmp(unescaped_media_type, "audio/float32") == 0 ) {
-        p->flow_type = AUDIO_FLOW;
-        int rc = read_audio_header(s, &flow_info, &flow_def_doc, st, unescaped_media_type);
-        if (rc) {
-            loge(s, "read audio header error\n");
-            exit_status = rc;
+    initialized_stream_contexts_count = 0;
+    for (int i = 0; i < loc.nb_flow_ids; i++) {
+        int flow_rc = read_flow(s, mxl_instance, loc.flow_ids[i], &stream_contexts[i]);
+        if (flow_rc) {
+            exit_status = flow_rc;
             goto finally;
         }
+
+        initialized_stream_contexts_count++;
     }
-    else if ( strcmp(unescaped_media_type, "video/v210") == 0 ) {
-        p->flow_type = VIDEO_FLOW;
-        int rc = read_video_header(s, &flow_info, &flow_def_doc, st, unescaped_media_type);
-        if (rc) {
-            loge(s, "read video header error\n");
-            exit_status = rc;
-            goto finally;
-        }
-    }
-    else {
-        loge(s, "unsupported media_type \"%s\"\n", unescaped_media_type);
+
+    rc = header_validate_flows(s);
+    if (rc) {
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
 
-    p->domain_path = loc.domain_path;
-    loc.domain_path = NULL;
-
-    p->flowid = loc.flow_ids[0];
-    loc.flow_ids[0] = NULL;
+    // success, transfer state
+    p->loc = loc;
+    memset(&loc, 0, sizeof(loc));
 
     p->mxl_instance = mxl_instance;
     mxl_instance = NULL;
 
-    p->mxl_flow_reader = flow_reader;
-    flow_reader = NULL;
+    p->stream_contexts = stream_contexts;
+    stream_contexts = NULL;
 
-    p->stream_index = st->index;
+    p->at_eof = false;
+
+    header_init_tuning_params(s);
 
     exit_status = 0;
 
@@ -870,25 +1120,15 @@ finally:
 
     mxl_loc_free(&loc);
 
-    mxl_json_doc_release(&flow_def_doc);
-
-    av_free(id.value);
-    av_free(desc.value);
-    av_free(label.value);
-    av_free(format.value);
-    av_free(media_type.value);
-    av_free(unescaped_media_type);
-    av_free(flow_def_json);
-
-    if (flow_reader) {
+    if (stream_contexts) {
         av_assert0(mxl_instance);
-        mxl_status = mxlReleaseFlowReader(mxl_instance, flow_reader);
-        if (MXL_STATUS_OK != mxl_status)
-            logw(s, "mxlReleaseFlowReader error %s\n", mxl_status_to_str(mxl_status));
+        for(int i = 0; i < initialized_stream_contexts_count; i++)
+            release_stream_context(s, mxl_instance, &stream_contexts[i]);
+        av_free(stream_contexts);
     }
 
     if (mxl_instance) {
-        mxl_status = mxlDestroyInstance(mxl_instance);
+        mxlStatus mxl_status = mxlDestroyInstance(mxl_instance);
         if (MXL_STATUS_OK != mxl_status)
             logw(s, "mxlDestroyInstance error %s\n", mxl_status_to_str(mxl_status));
     }
@@ -910,42 +1150,45 @@ static void mxl_zero_copy_release_cb(void *ctx, uint8_t *data)
 }
 
 static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
+                             StreamContext *stream_ctx,
                              const mxlFlowInfo *flow_info)
 {
     MXLContext  *p = s->priv_data;
 
     int exit_status = AVERROR_UNKNOWN;
 
-    if (p->max_video_frames > 0 && p->flow.video.frame_count >= p->max_video_frames) {
+    logd(s, "read video packet\n");
+
+    if (p->max_video_frames > 0 && stream_ctx->flow.video.frame_count >= p->max_video_frames) {
         logv(s, "at max_video_frames (%d)\n", p->max_video_frames);
         return AVERROR_EOF;
     }
 
     // init grain index
-    if (0 == p->flow.video.mxl_grain_index) {
+    if (0 == stream_ctx->flow.video.mxl_grain_index) {
         switch (p->grain_index_init) {
         case GRAIN_INDEX_INIT_CURRENT: {
-            uint64_t cur_grain_index = mxlGetCurrentIndex(&p->flow.video.mxl_grain_rate);
+            uint64_t cur_grain_index = mxlGetCurrentIndex(&stream_ctx->flow.video.mxl_grain_rate);
             if (MXL_UNDEFINED_INDEX == cur_grain_index) {
                 loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
                 goto finally;
             }
-            p->flow.video.mxl_grain_index = cur_grain_index;
-            logv(s, "init grain_index = %"PRIu64", policy: current time\n",
-                 p->flow.video.mxl_grain_index);
+            stream_ctx->flow.video.mxl_grain_index = cur_grain_index;
+            logv(s, "init video grain_index = %"PRIu64", policy: current time\n",
+                 stream_ctx->flow.video.mxl_grain_index);
             break;
         }
         case GRAIN_INDEX_INIT_HEAD:
-            p->flow.video.mxl_grain_index = flow_info->runtime.headIndex;
-            logv(s, "init grain index = %"PRIu64", policy: headIndex\n",
-                 p->flow.video.mxl_grain_index);
+            stream_ctx->flow.video.mxl_grain_index = flow_info->runtime.headIndex;
+            logv(s, "init video grain index = %"PRIu64", policy: headIndex\n",
+                 stream_ctx->flow.video.mxl_grain_index);
             break;
         case GRAIN_INDEX_INIT_TAIL:
-            p->flow.video.mxl_grain_index = flow_info->runtime.headIndex -
+            stream_ctx->flow.video.mxl_grain_index = flow_info->runtime.headIndex -
                 flow_info->config.discrete.grainCount + 1;
-            logv(s, "init grain index = %"PRIu64", policy: tail index\n",
-                 p->flow.video.mxl_grain_index);
+            logv(s, "init video grain index = %"PRIu64", policy: tail index\n",
+                 stream_ctx->flow.video.mxl_grain_index);
             break;
         default:
             loge(s, "unrecognized grain_index_init = \"%d\"\n", p->grain_index_init);
@@ -955,30 +1198,34 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
         if (p->reset_on_drop) {
             // presentation timestamp is mxl_start_grain_index relative
-            p->flow.video.mxl_start_grain_index = p->flow.video.mxl_grain_index;
+            stream_ctx->flow.video.mxl_start_grain_index = stream_ctx->flow.video.mxl_grain_index;
         }
     }
 
     // init the start grain index
-    if (0 == p->flow.video.mxl_start_grain_index)
-        p->flow.video.mxl_start_grain_index = p->flow.video.mxl_grain_index;
+    if (0 == stream_ctx->flow.video.mxl_start_grain_index)
+        stream_ctx->flow.video.mxl_start_grain_index = stream_ctx->flow.video.mxl_grain_index;
 
     mxlGrainInfo grain_info = {0};
     uint8_t *mxl_payload = NULL;
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
 
-    if (p->non_blocking) {
-        mxl_status = mxlFlowReaderGetGrainNonBlocking(p->mxl_flow_reader,
-                                                      p->flow.video.mxl_grain_index,
-                                                      &grain_info, &mxl_payload);
-    }
-    else {
+    if ((p->blocking == -1 && p->tuning.video_blocking_read) || p->blocking == 1) {
+        logd(s, "blocking video frame read, grain index %"PRIu64"\n",
+             stream_ctx->flow.video.mxl_grain_index);
         const AVRational ns_time_base = {1, 1000000000};
         uint64_t timeout_ns = (uint64_t)av_rescale_q(1, st->time_base, ns_time_base);
-        mxl_status = mxlFlowReaderGetGrain(p->mxl_flow_reader,
-                                           p->flow.video.mxl_grain_index,
+        mxl_status = mxlFlowReaderGetGrain(stream_ctx->mxl_flow_reader,
+                                           stream_ctx->flow.video.mxl_grain_index,
                                            timeout_ns, &grain_info,
                                            &mxl_payload);
+    }
+    else {
+        logd(s, "non-blocking video read, 1 frame at index %"PRIu64"\n",
+             stream_ctx->flow.video.mxl_grain_index);
+        mxl_status = mxlFlowReaderGetGrainNonBlocking(stream_ctx->mxl_flow_reader,
+                                                      stream_ctx->flow.video.mxl_grain_index,
+                                                      &grain_info, &mxl_payload);
     }
 
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
@@ -986,16 +1233,16 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         case ON_TOO_LATE_INCREMENT:
             logv(s, "no video grain, too late with grain index %"PRIu64
                  ", increment index and try again\n",
-                 p->flow.video.mxl_grain_index);
-            p->flow.video.mxl_grain_index++;
+                 stream_ctx->flow.video.mxl_grain_index);
+            stream_ctx->flow.video.mxl_grain_index++;
             exit_status = AVERROR(EAGAIN);
             break;
         case ON_TOO_LATE_RESET:
             logv(s, "no grain, too late with grain index %"PRIu64
                  ", reset index and try again\n",
-                 p->flow.video.mxl_grain_index);
+                 stream_ctx->flow.video.mxl_grain_index);
             exit_status = AVERROR(EAGAIN);
-            p->flow.video.mxl_grain_index = 0;
+            stream_ctx->flow.video.mxl_grain_index = 0;
             break;
         default:
             loge(s, "unrecognized on_too_late = \"%d\"\n", p->on_too_late);
@@ -1005,13 +1252,13 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     }
     else if (MXL_ERR_OUT_OF_RANGE_TOO_EARLY == mxl_status) {
         logv(s, "no grain, too early with grain index %"PRIu64", try again\n",
-             p->flow.video.mxl_grain_index);
+             stream_ctx->flow.video.mxl_grain_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
     }
     else if (MXL_ERR_TIMEOUT == mxl_status) {
         logv(s, "no grain, timed out with grain index %"PRIu64", try again\n",
-             p->flow.video.mxl_grain_index);
+             stream_ctx->flow.video.mxl_grain_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
     }
@@ -1043,7 +1290,6 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         pkt->buf = zcbuf;
         pkt->data = mxl_payload;
         pkt->size = grain_size;
-        pkt->stream_index = p->stream_index;
     }
     else
     {
@@ -1060,23 +1306,23 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     }
 
     int64_t rel_grain_count =
-        p->flow.video.mxl_grain_index - p->flow.video.mxl_start_grain_index;
+        stream_ctx->flow.video.mxl_grain_index - stream_ctx->flow.video.mxl_start_grain_index;
     av_assert1(rel_grain_count >= 0);
 
     pkt->pos = -1;
     pkt->pts = rel_grain_count;
     pkt->dts = rel_grain_count;
     pkt->duration = 1;
-    pkt->stream_index = p->stream_index;
+    pkt->stream_index = stream_ctx->stream_index;
     pkt->flags |= AV_PKT_FLAG_KEY;
 
-    logv(s, "good frame, grain_index=%"PRIu64", relative=%"PRId64
-         ", mxl_payload=%p, pkt->data=%p\n",
-         p->flow.video.mxl_grain_index, rel_grain_count, mxl_payload, pkt->data);
+    logd(s, "good frame, grain_index=%"PRIu64", relative_grain_count=%"PRId64
+         ", pkt->data=%p, mxl_payload=%p\n",
+         stream_ctx->flow.video.mxl_grain_index, rel_grain_count, pkt->data, mxl_payload);
 
     // all good, advance the grain index
-    p->flow.video.mxl_grain_index++;
-    p->flow.video.frame_count++;
+    stream_ctx->flow.video.mxl_grain_index++;
+    stream_ctx->flow.video.frame_count++;
 
     exit_status = 0;
 
@@ -1217,47 +1463,52 @@ static int mxl_payload_to_ffmpeg_packet(AVFormatContext *, struct SwrContext *,
 #endif
 
 static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
+                             StreamContext *stream_ctx,
                              const mxlFlowInfo *flow_info)
 {
     MXLContext  *p = s->priv_data;
     int exit_status = AVERROR_UNKNOWN;
+
+    logd(s, "read audio packet\n");
 
     // default max_samples_per_read is the MXL batch size hint
     av_assert0(0 < flow_info->config.common.maxCommitBatchSizeHint &&
                flow_info->config.common.maxCommitBatchSizeHint <= INT_MAX);
     int max_samples_per_read = (int)flow_info->config.common.maxCommitBatchSizeHint;
 
+    if (p->tuning.audio_samples_per_read > 0) {
+        max_samples_per_read = p->tuning.audio_samples_per_read;
+    }
 
     // override default max_samples_per_read with command line option if set
     if (p->max_audio_samples_per_read > 0) {
         max_samples_per_read = p->max_audio_samples_per_read;
-        logv(s, "max audio samples per read = %d\n", max_samples_per_read);
     }
 
-    if (p->max_audio_samples > 0 && p->flow.audio.sample_point_count >= p->max_audio_samples) {
+    if (p->max_audio_samples > 0 && stream_ctx->flow.audio.sample_point_count >= p->max_audio_samples) {
         logv(s, "at max_audio_samples (%d)\n", p->max_audio_samples);
         return AVERROR_EOF;
     }
 
     // init sample index
-    if (0 == p->flow.audio.mxl_sample_index) {
+    if (0 == stream_ctx->flow.audio.mxl_sample_index) {
         switch (p->grain_index_init) {
         case GRAIN_INDEX_INIT_CURRENT: {
-            uint64_t cur_sample_index = mxlGetCurrentIndex(&p->flow.audio.mxl_sample_rate);
+            uint64_t cur_sample_index = mxlGetCurrentIndex(&stream_ctx->flow.audio.mxl_sample_rate);
             if (MXL_UNDEFINED_INDEX == cur_sample_index) {
                 loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
                 goto finally;
             }
-            p->flow.audio.mxl_sample_index = cur_sample_index;
+            stream_ctx->flow.audio.mxl_sample_index = cur_sample_index;
             logv(s, "init audio sample_index = %"PRIu64", policy: current time\n",
-                 p->flow.audio.mxl_sample_index);
+                 stream_ctx->flow.audio.mxl_sample_index);
             break;
         }
         case GRAIN_INDEX_INIT_HEAD:
-            p->flow.audio.mxl_sample_index = flow_info->runtime.headIndex;
-            logv(s, "init sample index = %"PRIu64", policy: headIndex\n",
-                 p->flow.audio.mxl_sample_index);
+            stream_ctx->flow.audio.mxl_sample_index = flow_info->runtime.headIndex;
+            logv(s, "init audio sample index = %"PRIu64", policy: headIndex\n",
+                 stream_ctx->flow.audio.mxl_sample_index);
             break;
         case GRAIN_INDEX_INIT_TAIL: {
             // MXL limits readable audio ring buffer length to half
@@ -1271,16 +1522,16 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                 uint64_t start_index = flow_info->runtime.headIndex -
                     (uint64_t)(p->max_audio_samples - (rem ? rem : max_samples_per_read));
                 av_assert0(flow_info->runtime.headIndex >= start_index);
-                p->flow.audio.mxl_sample_index = start_index;
+                stream_ctx->flow.audio.mxl_sample_index = start_index;
             }
             else {
                 uint64_t start_index =
                     flow_info->runtime.headIndex - readableBufLen;
                 av_assert0(flow_info->runtime.headIndex >= start_index);
-                p->flow.audio.mxl_sample_index = start_index;
+                stream_ctx->flow.audio.mxl_sample_index = start_index;
             }
-            logv(s, "init sample index = %"PRIu64", policy: tail index\n",
-                 p->flow.audio.mxl_sample_index);
+            logv(s, "init audio sample index = %"PRIu64", policy: tail index\n",
+                 stream_ctx->flow.audio.mxl_sample_index);
             break;
         }
         default:
@@ -1291,17 +1542,17 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
         if (p->reset_on_drop) {
             // presentation timestamp is mxl_start_grain_index relative
-            p->flow.audio.mxl_start_sample_index = p->flow.audio.mxl_sample_index;
+            stream_ctx->flow.audio.mxl_start_sample_index = stream_ctx->flow.audio.mxl_sample_index;
         }
     }
 
     // init the start grain index
-    if (0 == p->flow.audio.mxl_start_sample_index)
-        p->flow.audio.mxl_start_sample_index = p->flow.audio.mxl_sample_index;
+    if (0 == stream_ctx->flow.audio.mxl_start_sample_index)
+        stream_ctx->flow.audio.mxl_start_sample_index = stream_ctx->flow.audio.mxl_sample_index;
 
     int samples_this_read = max_samples_per_read;
     if (p->max_audio_samples > 0) {
-        samples_this_read = p->max_audio_samples - p->flow.audio.sample_point_count;
+        samples_this_read = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
         if (samples_this_read > max_samples_per_read)
             samples_this_read = max_samples_per_read;
     }
@@ -1309,24 +1560,38 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     const AVRational ns_time_base = {1, 1000000000};
     uint64_t timeout_ns = (uint64_t)av_rescale_q(max_samples_per_read, st->time_base, ns_time_base);
     mxlWrappedMultiBufferSlice payload = {0};
+    logd(s, "non-blocking audio read, %d samples at index %"PRIu64"\n",
+         samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
     mxlStatus mxl_status = mxlFlowReaderGetSamples(
-        p->mxl_flow_reader, p->flow.audio.mxl_sample_index, (size_t)samples_this_read, timeout_ns, &payload);
+        stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
+        (size_t)samples_this_read, timeout_ns, &payload);
 
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
+
+        static int64_t last_log_time;
+        int64_t now = av_gettime_relative();
+        if (!last_log_time || now - last_log_time >= 1000000) {
+            last_log_time = now;
+            logv(s, "audio too late\n");
+        }
+
         switch(p->on_too_late) {
         case ON_TOO_LATE_INCREMENT:
-            logv(s, "no audio samples, too late with sample index %"PRIu64
+            logd(s, "headIndex = %"PRIu64" vs sample_indx = %"PRIu64" diff = %d\n",
+                 flow_info->runtime.headIndex, stream_ctx->flow.audio.mxl_sample_index,
+                 flow_info->runtime.headIndex - stream_ctx->flow.audio.mxl_sample_index);
+            logd(s, "no audio samples, too late with sample index %"PRIu64
                  ", increment index and try again\n",
-                 p->flow.audio.mxl_sample_index);
-            p->flow.audio.mxl_sample_index += max_samples_per_read;
+                 stream_ctx->flow.audio.mxl_sample_index);
+            stream_ctx->flow.audio.mxl_sample_index += max_samples_per_read;
             exit_status = AVERROR(EAGAIN);
             break;
         case ON_TOO_LATE_RESET:
-            logv(s, "no audio samples, too late with sample index %"PRIu64
+            logd(s, "no audio samples, too late with sample index %"PRIu64
                  ", reset index and try again\n",
-                 p->flow.audio.mxl_sample_index);
+                 stream_ctx->flow.audio.mxl_sample_index);
             exit_status = AVERROR(EAGAIN);
-            p->flow.audio.mxl_sample_index = 0;
+            stream_ctx->flow.audio.mxl_sample_index = 0;
             break;
         default:
             loge(s, "unrecognized on_too_late = \"%d\"\n", p->on_too_late);
@@ -1336,13 +1601,13 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     }
     else if (MXL_ERR_OUT_OF_RANGE_TOO_EARLY == mxl_status) {
         logv(s, "no audio samples, too early with sample index %"PRIu64", try again\n",
-             p->flow.audio.mxl_sample_index);
+             stream_ctx->flow.audio.mxl_sample_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
     }
     else if (MXL_ERR_TIMEOUT == mxl_status) {
         logv(s, "no audio samples, timed out with sample index %"PRIu64", try again\n",
-             p->flow.audio.mxl_sample_index);
+             stream_ctx->flow.audio.mxl_sample_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
     }
@@ -1373,7 +1638,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     av_assert0(payload.stride == flow_info->config.continuous.bufferLength * sizeof(float));
 
     // interleave planar source buffers into pkt->data
-    rc = mxl_payload_to_ffmpeg_packet(s, p->flow.audio.swr_context, &payload, pkt);
+    rc = mxl_payload_to_ffmpeg_packet(s, stream_ctx->flow.audio.swr_context, &payload, pkt);
     if (rc < 0) {
         loge(s, "audio payload to packet conversion failed\n");
         exit_status = rc;
@@ -1381,21 +1646,23 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     }
 
     int64_t rel_sample_count =
-        p->flow.audio.mxl_sample_index - p->flow.audio.mxl_start_sample_index;
+        stream_ctx->flow.audio.mxl_sample_index - stream_ctx->flow.audio.mxl_start_sample_index;
     av_assert1(rel_sample_count >= 0);
 
     pkt->pts      = rel_sample_count;
     pkt->dts      = rel_sample_count;
     pkt->duration = samples_this_read;
-    pkt->stream_index = p->stream_index;
+    pkt->stream_index = stream_ctx->stream_index;
 
-    logv(s, "good audio block, sample_index=%"PRIu64", relative=%"PRId64
-         ", pkt->data=%p, samples_this_read = %d\n",
-         p->flow.audio.mxl_sample_index, rel_sample_count, pkt->data, samples_this_read);
+    logd(s, "good audio block, sample_index=%"PRIu64", relative_sample_count=%"PRId64
+         ", samples_this_read = %d, pkt->data=%p mxl_payload_0=%p, mxl_payload_1=%p\n",
+         stream_ctx->flow.audio.mxl_sample_index, rel_sample_count, samples_this_read, pkt->data,
+         payload.base.fragments[0].pointer,
+         payload.base.fragments[1].size > 0 ? payload.base.fragments[1].pointer : NULL);
 
     // all good, advance the sample index
-    p->flow.audio.mxl_sample_index += samples_this_read;
-    p->flow.audio.sample_point_count += samples_this_read;
+    stream_ctx->flow.audio.mxl_sample_index += samples_this_read;
+    stream_ctx->flow.audio.sample_point_count += samples_this_read;
 
     exit_status = 0;
 
@@ -1413,23 +1680,28 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
 
     MXLContext  *p = s->priv_data;
 
+    int stream_ctx_idx = p->next_stream_context_idx;
+    p->next_stream_context_idx =
+        (p->next_stream_context_idx + 1) % p->loc.nb_flow_ids;
+
+    av_assert0(stream_ctx_idx < p->loc.nb_flow_ids);
+
     // early bail-out to avoid flooding the log
     if (p->at_eof) {
         logv(s, "at eof\n");
         return AVERROR_EOF;
     }
 
-    // target stream
-    if (s->nb_streams <= p->stream_index || !s->streams[p->stream_index]) {
-        loge(s, "invalid stream index %d\n", p->stream_index);
-        return AVERROR_INVALIDDATA;
-    }
-    AVStream *st = s->streams[p->stream_index];
+    StreamContext* stream_ctx = &p->stream_contexts[stream_ctx_idx];
+
+    av_assert0(stream_ctx->stream_index < s->nb_streams);
+    AVStream *st = s->streams[stream_ctx->stream_index];
 
     int exit_status = AVERROR_UNKNOWN;
     bool active = false;
 
-    mxlStatus mxl_status = mxlIsFlowActive(p->mxl_instance, p->flowid, &active);
+    mxlStatus mxl_status = mxlIsFlowActive(
+        p->mxl_instance, p->loc.flow_ids[stream_ctx_idx], &active);
     if (MXL_STATUS_OK == mxl_status && !active) {
         logv(s, "flow not active, stopping\n");
         p->at_eof = true;
@@ -1449,16 +1721,16 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     mxlFlowInfo flow_info = {0};
-    mxl_status = mxlFlowReaderGetInfo(p->mxl_flow_reader, &flow_info);
+    mxl_status = mxlFlowReaderGetInfo(stream_ctx->mxl_flow_reader, &flow_info);
     if (mxl_status != MXL_STATUS_OK) {
         loge(s, "mxlFlowReaderGetInfo failed\n");
         exit_status = AVERROR(EIO);
         goto finally;
     }
 
-    switch (p->flow_type) {
+    switch (stream_ctx->flow_type) {
     case VIDEO_FLOW: {
-        int rc = read_video_packet(s, st, pkt, &flow_info);
+        int rc = read_video_packet(s, st, pkt, stream_ctx, &flow_info);
         if (rc) {
             exit_status = rc;
             goto finally;
@@ -1466,7 +1738,7 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
         break;
     }
     case AUDIO_FLOW: {
-        int rc = read_audio_packet(s, st, pkt, &flow_info);
+        int rc = read_audio_packet(s, st, pkt, stream_ctx, &flow_info);
         if (rc) {
             exit_status = rc;
             goto finally;
@@ -1497,12 +1769,10 @@ static int mxl_read_close(AVFormatContext *s)
 
     MXLContext *p = s->priv_data;
 
-    if (p->mxl_flow_reader) {
-        av_assert0(p->mxl_instance);
-        if (MXL_STATUS_OK != mxlReleaseFlowReader(p->mxl_instance, p->mxl_flow_reader))
-            logw(s, "mxlReleaseFlowReader error\n");
-        p->mxl_flow_reader = NULL;
-    }
+    for (int i = 0; i < p->loc.nb_flow_ids; i++)
+        release_stream_context(s, p->mxl_instance, &p->stream_contexts[i]);
+    av_free(p->stream_contexts);
+    p->stream_contexts = NULL;
 
     if (p->mxl_instance) {
         if (MXL_STATUS_OK != mxlDestroyInstance(p->mxl_instance))
@@ -1510,23 +1780,7 @@ static int mxl_read_close(AVFormatContext *s)
         p->mxl_instance = NULL;
     }
 
-    av_free(p->flowid);
-    p->flowid = NULL;
-
-    av_free(p->domain_path);
-    p->domain_path = NULL;
-
-    switch(p->flow_type) {
-    case VIDEO_FLOW:
-        p->flow.video = (VideoState){0};
-        break;
-    case AUDIO_FLOW:
-        swr_free(&p->flow.audio.swr_context);
-        p->flow.audio = (AudioState){0};
-        break;
-    default:
-        logw(s, "unknown flow_type\n");
-    }
+    mxl_loc_free(&p->loc);
 
     p->at_eof = false;
 

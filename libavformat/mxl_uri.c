@@ -30,6 +30,21 @@
 #include <ctype.h>
 #include <string.h>
 
+/* returns 0 if flow_ids are unique */
+static int validate_unique_ids(void* logctx, int nb_flow_ids, char** flow_ids)
+{
+    // demuxer requires unique flow IDs
+    for(int i = 0; i < nb_flow_ids; i++)
+        for(int j = i+1; j < nb_flow_ids; j++)
+            if (0 == av_strcasecmp(flow_ids[i], flow_ids[j])) {
+                logv(NULL, "URI locator flow ID not unique: %s\n", flow_ids[j]);
+                return -1;
+            }
+
+    return 0;
+}
+
+/* returns boolean if uri is valid (0 = not valid) */
 int mxl_uri_is_valid_uuid(const char *s)
 {
     if (!s)
@@ -96,17 +111,17 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
 
     const char *p = strchr(uri, ':');
     if (!p) {
-        loge(logctx, "URI scheme not found\n");
+        logv(logctx, "URI scheme not found\n");
         return AVERROR(EINVAL);
     }
 
     if ((size_t)(p - uri) >= MXL_SCHEME_MAX) {
-        loge(logctx, "URI scheme too long\n");
+        logv(logctx, "URI scheme too long\n");
         return AVERROR(ENAMETOOLONG);
     }
 
     if (strchr(uri, '#')) {
-        loge(logctx, "URI fragments not supported\n");
+        logv(logctx, "URI fragments not supported\n");
         return AVERROR(EINVAL);
     }
 
@@ -137,20 +152,20 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
                  uri);
 
     if (av_strcasecmp(scheme, "mxl") != 0) {
-        loge(logctx, "Unknown URI scheme: %s\n", scheme);
+        logv(logctx, "Unknown URI scheme: %s\n", scheme);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     /* require mxl:// (authority marker present) */
     if (len < 6 || av_strncasecmp(uri, "mxl://", 6) != 0) {
-        loge(logctx, "Authority marker required in URI (\"mxl://\")\n");
+        logv(logctx, "Authority marker required in URI (\"mxl://\")\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     if (auth[0] != '\0') {
-        loge(logctx, "URI user authorization info not supported\n");
+        logv(logctx, "URI user authorization info not supported\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -158,14 +173,14 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
     /* reject empty IPv6 literal: mxl://[]/... */
     const char *auth_start = uri + 6;
     if (auth_start[0] == '[' && host[0] == '\0') {
-        loge(logctx, "Invalid IPv6 host literal: []\n");
+        logv(logctx, "Invalid IPv6 host literal: []\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     /* reject host without domain path */
     if (!path || path[0] != '/' || path[1] == '\0' || path[1] == '?') {
-        loge(logctx, "MXL URI must contain a non-empty domain path\n");
+        logv(logctx, "MXL URI must contain a non-empty domain path\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -175,7 +190,7 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
     // port. Port equal to 0 is returned in abberrant cases such as
     // absent port or non integer port number.
     if (port < -1 || port == 0 || port > 65535) {
-        loge(logctx, "Invalid URI port: %d\n", port);
+        logv(logctx, "Invalid URI port: %d\n", port);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -197,7 +212,7 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
 
     /* domain must exist  */
     if (!path[0]) {
-        loge(logctx, "Invalid URI missing domain path\n");
+        logv(logctx, "Invalid URI missing domain path\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -223,14 +238,14 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
                 }
 
                 if (flow_id[0] == '\0') {
-                    loge(logctx, "Invalid URI query parameter: %s\n", token);
+                    logv(logctx, "Invalid URI query parameter: %s\n", token);
                     av_free(flow_id);
                     exit_status = AVERROR(EINVAL);
                     goto finally;
                 }
 
                 if (!mxl_uri_is_valid_uuid(flow_id)) {
-                    loge(logctx, "Invalid URI flow ID parameter: %s\n", flow_id);
+                    logv(logctx, "Invalid URI flow ID parameter: %s\n", flow_id);
                     av_free(flow_id);
                     exit_status = AVERROR(EINVAL);
                     goto finally;
@@ -251,6 +266,12 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
 
             token = strtok_r(NULL, "&", &strtok_context);
         }
+    }
+
+    int rc = validate_unique_ids(logctx, out_nb_flow_ids, out_flow_ids);
+    if (rc) {
+        exit_status = AVERROR(EINVAL);
+        goto finally;
     }
 
     out->host = out_host;

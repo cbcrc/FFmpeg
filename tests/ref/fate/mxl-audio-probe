@@ -1,4 +1,4 @@
-Input #0, mxl, from 'mxl:///home/jpt/cbcrc/FFmpeg/tests/data/tmp/mxl/domain?id=ff39f65b-d760-4a7c-808d-4f2778de5658':
+Input #0, mxl, from 'mxl:///path/to/domain?id=ff39f65b-d760-4a7c-808d-4f2778de5658':
   Duration: N/A, bitrate: N/A
   Stream #0:0: Audio: pcm_f32le, 48000 Hz, 2 channels, flt, 3072 kb/s
     Metadata:
