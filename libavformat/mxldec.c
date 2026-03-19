@@ -992,21 +992,25 @@ static void release_stream_context(AVFormatContext *s,
  * Reject configurations that have more than one video or more than
  * one audio flow.
  */
-static int header_validate_flows(AVFormatContext *s)
+static int header_validate_flows(AVFormatContext *s,
+                                 int nb_stream_contexts,
+                                 const StreamContext* stream_contexts)
 {
-    av_assert0(s);
-    MXLContext *p = s->priv_data;
+    av_assert0(stream_contexts);
 
     int audio_count = 0;
     int video_count = 0;
-    for (int i = 0; i < p->loc.nb_flow_ids; i++) {
-        switch(p->stream_contexts[i].flow_type) {
+    for (int i = 0; i < nb_stream_contexts; i++) {
+        switch(stream_contexts[i].flow_type) {
         case AUDIO_FLOW:
             audio_count++;
             break;
         case VIDEO_FLOW:
             video_count++;
             break;
+        default:
+            loge(s, "MXL unknown stream context flow type\n");
+            return -1;
         }
     }
 
@@ -1094,7 +1098,7 @@ static int mxl_read_header(AVFormatContext *s)
         initialized_stream_contexts_count++;
     }
 
-    rc = header_validate_flows(s);
+    rc = header_validate_flows(s, loc.nb_flow_ids, stream_contexts);
     if (rc) {
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
