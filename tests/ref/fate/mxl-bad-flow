@@ -1,2 +1,8 @@
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: domain/717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow
+[mxl @ 0xADDR] mxlCreateFlowReader error MXL_ERR_UNKNOWN for flow ID 717f834b-4224-4c9b-8a64-ecb7726803b8
 domain/717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow: Input/output error
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl:///path/to/tests/data/tmp/mxl/bad_flow/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] mxlCreateFlowReader error MXL_ERR_UNKNOWN for flow ID 717f834b-4224-4c9b-8a64-ecb7726803b8
 mxl:///path/to/tests/data/tmp/mxl/bad_flow/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8: Input/output error

@@ -356,11 +356,11 @@ finally:
 }
 
 
-static int probe_validate_locator(const mxl_loc* loc) {
+static int validate_locator(void *logctx, const mxl_loc* loc) {
     av_assert0(loc);
 
     if (loc->nb_flow_ids < 1) {
-        logv(NULL, "MXL locator requires at least one flow ID\n");
+        logv(logctx, "MXL locator requires at least one flow ID\n");
         return -1;
     }
 
@@ -404,7 +404,7 @@ static int mxl_probe(const AVProbeData *p) {
         goto finally;
     }
 
-    rc = probe_validate_locator(&loc);
+    rc = validate_locator(NULL, &loc);
     if (rc) {
         logv(NULL, "MXL invalid locator: %s\n", p->filename);
         goto finally;
@@ -1056,22 +1056,19 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
-    int rc = mxl_loc_parse(NULL, s->url, &loc);
+    int rc = mxl_loc_parse(s, s->url, &loc);
     if (rc) {
         logv(s, "MXL failed to parse resource locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
-    if (loc.nb_flow_ids < 1) {
+    rc = validate_locator(s, &loc);
+    if (rc) {
+        logv(s, "MXL invalid locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
-        logv(s, "MXL locator requires at least one flow ID\n");
         goto finally;
     }
-
-    // mxl_loc parse invariants
-    av_assert0(loc.domain_path);
-    av_assert0(loc.flow_ids);
 
     mxl_instance = mxlCreateInstance(loc.domain_path, NULL);
     if (NULL == mxl_instance) {

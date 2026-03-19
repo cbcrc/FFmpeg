@@ -1,5 +1,43 @@
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: /domain/without/flow
+[mxl @ 0xADDR] MXL locator requires at least one flow ID
+[mxl @ 0xADDR] MXL invalid locator: /domain/without/flow
 /domain/without/flow: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl:///domain/without/flow
+[mxl @ 0xADDR] MXL locator requires at least one flow ID
+[mxl @ 0xADDR] MXL invalid locator: mxl:///domain/without/flow
 mxl:///domain/without/flow: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: /domain/bad-flow-id.mxl-flow
+[mxl @ 0xADDR] MXL URI flow ID is not a valid uuid: bad-flow-id
+[mxl @ 0xADDR] MXL failed to parse resource locator: /domain/bad-flow-id.mxl-flow
 /domain/bad-flow-id.mxl-flow: Invalid argument
-mxl:///domain/bad-717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl:///domain?id=bad-flow-id
+[mxl @ 0xADDR] Invalid URI flow ID parameter: bad-flow-id
+[mxl @ 0xADDR] MXL scheme found but URI parse failed: "mxl:///domain?id=bad-flow-id"
+[mxl @ 0xADDR] MXL failed to parse resource locator: mxl:///domain?id=bad-flow-id
+mxl:///domain?id=bad-flow-id: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: /domain/bad-717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow
+[mxl @ 0xADDR] MXL URI flow ID is not a valid uuid: bad-717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] MXL failed to parse resource locator: /domain/bad-717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow
+/domain/bad-717f834b-4224-4c9b-8a64-ecb7726803b8.mxl-flow: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl:///domain?id=bad-717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] Invalid URI flow ID parameter: bad-717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] MXL scheme found but URI parse failed: "mxl:///domain?id=bad-717f834b-4224-4c9b-8a64-ecb7726803b8"
+[mxl @ 0xADDR] MXL failed to parse resource locator: mxl:///domain?id=bad-717f834b-4224-4c9b-8a64-ecb7726803b8
+mxl:///domain?id=bad-717f834b-4224-4c9b-8a64-ecb7726803b8: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl:///domain/duplicate_flows?id=717f834b-4224-4c9b-8a64-ecb7726803b8&id=717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] URI locator flow ID not unique: 717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] MXL scheme found but URI parse failed: "mxl:///domain/duplicate_flows?id=717f834b-4224-4c9b-8a64-ecb7726803b8&id=717f834b-4224-4c9b-8a64-ecb7726803b8"
+[mxl @ 0xADDR] MXL failed to parse resource locator: mxl:///domain/duplicate_flows?id=717f834b-4224-4c9b-8a64-ecb7726803b8&id=717f834b-4224-4c9b-8a64-ecb7726803b8
 mxl:///domain/duplicate_flows?id=717f834b-4224-4c9b-8a64-ecb7726803b8&id=717f834b-4224-4c9b-8a64-ecb7726803b8: Invalid argument
+[mxl @ 0xADDR] mxl AVFormatContext:
+[mxl @ 0xADDR]   url: mxl://with-host/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8
+[mxl @ 0xADDR] MXL URI host not supported: "mxl://with-host/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8"
+[mxl @ 0xADDR] MXL failed to parse resource locator: mxl://with-host/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8
+mxl://with-host/domain?id=717f834b-4224-4c9b-8a64-ecb7726803b8: Invalid argument

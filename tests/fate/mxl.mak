@@ -25,10 +25,18 @@ RETRY_SLEEP := 0.3
 RETRY_LIMIT := 10
 
 # Use this to construct macro arguments that require "," characters
-comma := ,
+COMMA := ,
 
 # Use this to normalize local paths
-filter_pwd_from_uri = sed "s|mxl://$$(pwd)|mxl:///path/to|g"
+FILTER_PWD_FROM_MXL_URI = sed "s|mxl://$$(pwd)|mxl:///path/to|g"
+
+# Use to normalize the log prefix in "[mxl 0xXXXXXXXX]" messages
+FILTER_MXL_LOG_PREFIX = sed -E "s/(\[mxl @ 0x)[[:xdigit:]]+(\])/\1ADDR\2/g"
+
+# Grep out normalized mxl log messages, and the final "Invalid
+# argument" or "Input/output error" message
+PROBE_LOG_FILTER = $(FILTER_PWD_FROM_MXL_URI) | $(FILTER_MXL_LOG_PREFIX) | \
+                   grep -E "^\[mxl @ 0xADDR\]|: Invalid argument$$|: Input/output error$$"
 
 # Usage: $(call MXL_MUX_DEMUX_TEST,<test-dir-name>,<mux-command>,<demux-command>,<failure-label>)
 #
@@ -65,7 +73,7 @@ define MXL_MUX_DEMUX_TEST
             OUTFILE=$$(mktemp "$$TEST_DIR"/demux.out.XXXXXX) || exit 1; \
             $(3) > "$$OUTFILE" 2>&1; \
             STATUS=$$?; \
-            $(filter_pwd_from_uri) < "$$OUTFILE"; \
+            $(FILTER_PWD_FROM_MXL_URI) < "$$OUTFILE"; \
             rm -f "$$OUTFILE"; \
             if [ $$STATUS -eq 0 ]; then \
                 touch sentinel; \
@@ -85,7 +93,7 @@ endef
 # e.g. $(call MXL_PROBE,domain/<flow-id>.mxl-flow)
 #      $(call MXL_PROBE,mxl:///domain?id=<flow-id>)
 define MXL_PROBE
-$(TARGET_PATH)/ffprobe -hide_banner -v error -f mxl -i "$(1)"
+$(TARGET_PATH)/ffprobe -hide_banner -v verbose -f mxl -i "$(1)" 2>&1 | $(PROBE_LOG_FILTER)
 endef
 
 fate-mxl-video-encdec: CMD = \
@@ -110,7 +118,7 @@ fate-mxl-audio-encdec: CMD = \
     $(call MXL_MUX_DEMUX_TEST, \
         mxl-audio-encdec, \
         $(TARGET_PATH)/ffmpeg -hide_banner -re -v error \
-            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(comma)aformat=sample_fmts=flt:channel_layouts=stereo$(comma)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
+            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(COMMA)aformat=sample_fmts=flt:channel_layouts=stereo$(COMMA)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
             -map 0:a:0 -c:a pcm_f32le \
             -f mxl -audio_flow_id $(MXL_AUDIO_FLOW_ID) \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
@@ -130,7 +138,7 @@ fate-mxl-av-encdec: CMD = \
         mxl-av-encdec, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error -re \
             -f lavfi -i testsrc2=size=1920x1080:rate=50 \
-            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(comma)aformat=sample_fmts=flt:channel_layouts=stereo$(comma)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
+            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(COMMA)aformat=sample_fmts=flt:channel_layouts=stereo$(COMMA)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
             -map 0:v:0 -map 1:a:0 -frames:v 5 \
             -c:v v210 -c:a pcm_f32le \
             -f mxl -video_flow_id $(MXL_VIDEO_FLOW_ID) -audio_flow_id $(MXL_AUDIO_FLOW_ID) \
@@ -169,7 +177,7 @@ fate-mxl-audio-probe: CMD = \
     $(call MXL_MUX_DEMUX_TEST, \
         mxl-audio-probe, \
         $(TARGET_PATH)/ffmpeg -hide_banner -re -v error \
-            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(comma)aformat=sample_fmts=flt:channel_layouts=stereo$(comma)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
+            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(COMMA)aformat=sample_fmts=flt:channel_layouts=stereo$(COMMA)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
             -map 0:a:0 -c:a pcm_f32le \
             -f mxl -audio_flow_id $(MXL_AUDIO_FLOW_ID) \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
@@ -187,7 +195,7 @@ fate-mxl-av-probe: CMD = \
         mxl-audio-video-probe, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error -re \
             -f lavfi -i testsrc2=size=1920x1080:rate=50 \
-            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(comma)aformat=sample_fmts=flt:channel_layouts=stereo$(comma)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
+            -f lavfi -i "anoisesrc=sample_rate=48000:nb_samples=$(MXL_AUDIO_SAMPLES_PER_PACKET):seed=0$(COMMA)aformat=sample_fmts=flt:channel_layouts=stereo$(COMMA)atrim=end_sample=$(MXL_AUDIO_MAX_SAMPLES)" \
             -map 0:v:0 -map 1:a:0 -frames:v 5 \
             -c:v v210 -c:a pcm_f32le \
             -f mxl -video_flow_id $(MXL_VIDEO_FLOW_ID) -audio_flow_id $(MXL_AUDIO_FLOW_ID) \
@@ -205,23 +213,22 @@ fate-mxl-bad-loc: CMD = (\
     $(call MXL_PROBE,/domain/without/flow); \
     $(call MXL_PROBE,mxl:///domain/without/flow); \
     $(call MXL_PROBE,/domain/bad-flow-id.mxl-flow); \
-    $(call MXL_PROBE,mxl:///domain/bad-$(MXL_VIDEO_FLOW_ID).mxl-flow); \
+    $(call MXL_PROBE,mxl:///domain?id=bad-flow-id); \
+    $(call MXL_PROBE,/domain/bad-$(MXL_VIDEO_FLOW_ID).mxl-flow); \
+    $(call MXL_PROBE,mxl:///domain?id=bad-$(MXL_VIDEO_FLOW_ID)); \
     $(call MXL_PROBE,mxl:///domain/duplicate_flows?id=$(MXL_VIDEO_FLOW_ID)&id=$(MXL_VIDEO_FLOW_ID)); \
+    $(call MXL_PROBE,mxl://with-host/domain?id=$(MXL_VIDEO_FLOW_ID)); \
     true \
-    ) 2>&1
+    )
 fate-mxl-bad-loc: REF = $(SRC_PATH)/tests/ref/fate/mxl-bad-loc
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-bad-loc)
 
-# NOTE - The MXL library does not respect MXL_LOG_LEVEL=off here,
-# possibly because logging is initialized too late. Hence the
-# `grep -F -v "[mxl.cpp:"`.
-# MXL bug logged: TBD
 fate-mxl-bad-domain: CMD = (\
     export MXL_LOG_LEVEL=off; \
     $(call MXL_PROBE,/domain/does/not/exist/$(MXL_VIDEO_FLOW_ID).mxl-flow); \
     $(call MXL_PROBE,mxl:///domain/does/not/exist?id=$(MXL_VIDEO_FLOW_ID)); \
     true \
-    ) 2>&1 | grep -F -v "[mxl @ 0x" | grep -F -v "[mxl.cpp:"
+    )
 fate-mxl-bad-domain: REF = $(SRC_PATH)/tests/ref/fate/mxl-bad-domain
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-bad-domain)
 
@@ -233,6 +240,6 @@ fate-mxl-bad-flow: CMD = (\
     (cd "$$TEST_DIR"; $(call MXL_PROBE,domain/$(MXL_VIDEO_FLOW_ID).mxl-flow)); \
     $(call MXL_PROBE,mxl://"$$TEST_DIR"/domain?id=$(MXL_VIDEO_FLOW_ID)); \
     true \
-    ) 2>&1 | $(filter_pwd_from_uri) 2>&1 | grep -F -v "[mxl @ 0x" | grep -F -v "[mxl.cpp:"
+    ) 
 fate-mxl-bad-flow: REF = $(SRC_PATH)/tests/ref/fate/mxl-bad-flow
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-bad-flow)

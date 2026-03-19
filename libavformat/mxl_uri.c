@@ -37,7 +37,7 @@ static int validate_unique_ids(void* logctx, int nb_flow_ids, char** flow_ids)
     for(int i = 0; i < nb_flow_ids; i++)
         for(int j = i+1; j < nb_flow_ids; j++)
             if (0 == av_strcasecmp(flow_ids[i], flow_ids[j])) {
-                logv(NULL, "URI locator flow ID not unique: %s\n", flow_ids[j]);
+                logv(logctx, "URI locator flow ID not unique: %s\n", flow_ids[j]);
                 return -1;
             }
 
