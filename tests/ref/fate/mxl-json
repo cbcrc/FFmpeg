@@ -1034,7 +1034,7 @@ idx:     type str end  sz
 036:     prim 142 143 000 '3'
 PASS "accessible_a" = {1, SUCCESS}
 PASS "not_too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {2, SUCCESS}
-PASS "not_too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {nan, MXL_JSON_UNSUPPORTED}
+PASS "too_deep.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a" = {nan, MXL_JSON_UNSUPPORTED}
 PASS "accessible_b" = {3, SUCCESS}
 PASS limit: object_depth_under_limit
 

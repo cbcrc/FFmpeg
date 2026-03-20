@@ -797,7 +797,7 @@ static int read_flow(AVFormatContext *s, mxlInstance mxl_instance,
 
     logv(s, "good flow definition read for flow ID %s:\n%s\n", flow_id, flow_def_json);
 
-    int json_status = mxl_json_doc_build(flow_def_json, &flow_def_doc);
+    int json_status = mxl_json_doc_build(s, flow_def_json, &flow_def_doc);
     if (json_status) {
         loge(s, "json flow def parse error %d\n", json_status);
         exit_status = AVERROR_INVALIDDATA;

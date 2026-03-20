@@ -125,7 +125,8 @@ typedef struct {
  * @initial_token_capacity.
  *
  */
-int mxl_json_doc_build2(const char *json, mxl_json_doc *out,
+int mxl_json_doc_build2(void* logctx,
+                        const char *json, mxl_json_doc *out,
                         unsigned int initial_token_capacity,
                         unsigned int max_token_capacity);
 
@@ -146,9 +147,9 @@ int mxl_json_doc_build2(const char *json, mxl_json_doc *out,
  *         AVERROR(ENOMEM) on token capacity over limit, or allocation failure
  *         AVERROR(EIO)    on parse error (other than NOMEM).
  */
-static inline int mxl_json_doc_build(const char *json, mxl_json_doc *out)
+static inline int mxl_json_doc_build(void* logctx, const char *json, mxl_json_doc *out)
 {
-    return mxl_json_doc_build2(json, out,
+    return mxl_json_doc_build2(logctx, json, out,
                                MXL_JSON_INITIAL_TOKEN_CAPACITY_DEFAULT,
                                MXL_JSON_TOKEN_CAPACITY_MAX_DEFAULT);
 }

@@ -25,6 +25,7 @@
  */
 
 #include "mxl_json.h"
+#include "mxl_common.h"
 
 #include "libavutil/error.h"
 #include "libavutil/avassert.h"
@@ -301,7 +302,8 @@ static token_idx_pair find_path_va(const mxl_json_doc *doc, unsigned int nkeys,
 // public api
 //
 
-int mxl_json_doc_build2(const char *json, mxl_json_doc *out,
+int mxl_json_doc_build2(void* logctx,
+                        const char *json, mxl_json_doc *out,
                         const unsigned int initial_token_capacity,
                         const unsigned int max_token_capacity)
 {
@@ -322,8 +324,8 @@ int mxl_json_doc_build2(const char *json, mxl_json_doc *out,
     for (;;) {
 
         if (token_capacity > max_token_capacity) {
-            av_log(NULL, AV_LOG_ERROR, "JSON token cap (%u) exceeded\n",
-                   max_token_capacity);
+            loge(logctx, "JSON token cap (%u) exceeded\n",
+                    max_token_capacity);
             av_free(tokens);
             return AVERROR(ENOMEM);
         }
@@ -360,8 +362,8 @@ int mxl_json_doc_build2(const char *json, mxl_json_doc *out,
     }
 
     if (rc < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Failed to parse json: >>%.*s%s<<\n",
-               MAX_JSON_LOG, json, json_len > MAX_JSON_LOG ? "..." : "");
+        loge(logctx, "Failed to parse json: >>%.*s%s<<\n",
+             MAX_JSON_LOG, json, json_len > MAX_JSON_LOG ? "..." : "");
 
         av_free(tokens);
         return AVERROR_INVALIDDATA;

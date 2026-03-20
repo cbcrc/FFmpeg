@@ -347,7 +347,7 @@ static int sanity_test(void) {
     mxl_json_doc doc;
     int rc = -1;
 
-    if (mxl_json_doc_build(sanity_test_json, &doc) < 0) {
+    if (mxl_json_doc_build(NULL, sanity_test_json, &doc) < 0) {
         printf("json_doc_build failed\n");
         rc = 1;
         goto finally;
@@ -454,7 +454,7 @@ static const char valid_underflow_neg_number[] = "{\"a\": -1e-400}";
 
 static int test_input_build(const char* json, mxl_json_doc* doc)
 {
-    int rc = mxl_json_doc_build(json, doc);
+    int rc = mxl_json_doc_build(NULL, json, doc);
     if (rc < 0)
         printf("json_doc_build failed\n");
     return rc;
@@ -662,7 +662,7 @@ static int test_bad_number_case(const bad_number_case* cse) {
     if (rc < 0 || (size_t)rc >= sizeof(json))
         goto finally;
 
-    rc = mxl_json_doc_build(json, &doc);
+    rc = mxl_json_doc_build(NULL, json, &doc);
 
     if (!rc)
         mxl_json_dump_doc(&doc);
@@ -804,7 +804,7 @@ static int real_world_mxl_json_test(void) {
     mxl_json_doc doc;
     int rc = -1;
 
-    if (mxl_json_doc_build(real_world_mxl_json_str, &doc) < 0) {
+    if (mxl_json_doc_build(NULL, real_world_mxl_json_str, &doc) < 0) {
         printf("json_doc_build failed\n");
         rc = 1;
         goto finally;
@@ -834,7 +834,7 @@ static int token_capacity_test(const unsigned int initial_token_capacity,
 
     printf("parse with token capacity initial=%u max=%u\n", initial_token_capacity, max_token_capacity);
 
-    int rc = mxl_json_doc_build2(real_world_mxl_json_str, &doc,
+    int rc = mxl_json_doc_build2(NULL, real_world_mxl_json_str, &doc,
                              initial_token_capacity, max_token_capacity);
     if (expected_error != rc) {
         printf("FAIL json_doc_build status \"%s\"\n", name);
@@ -1021,7 +1021,7 @@ static int limit_tests(void)
     if (rc) goto finally;
     // fails at the key length limit
     rc = verify_json_double(&doc, NAN, MXL_JSON_UNSUPPORTED, 17,
-                            "not_too_deep",
+                            "too_deep",
                             "a","a","a","a","a","a","a","a",
                             "a","a","a","a","a","a","a","a");
     if (rc) goto finally;
