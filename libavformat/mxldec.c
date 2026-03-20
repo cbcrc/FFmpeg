@@ -360,7 +360,7 @@ static int validate_locator(void *logctx, const mxl_loc* loc) {
     av_assert0(loc);
 
     if (loc->nb_flow_ids < 1) {
-        logv(logctx, "MXL locator requires at least one flow ID\n");
+        logv(logctx, "locator requires at least one flow ID\n");
         return -1;
     }
 
@@ -400,13 +400,13 @@ static int mxl_probe(const AVProbeData *p) {
 
     int rc = mxl_loc_parse(NULL, p->filename, &loc);
     if (rc) {
-        logv(NULL, "MXL failed to parse locator: \"%s\"\n", p->filename);
+        logv(NULL, "failed to parse locator: \"%s\"\n", p->filename);
         goto finally;
     }
 
     rc = validate_locator(NULL, &loc);
     if (rc) {
-        logv(NULL, "MXL invalid locator: %s\n", p->filename);
+        logv(NULL, "invalid locator: %s\n", p->filename);
         goto finally;
     }
 
@@ -418,8 +418,8 @@ static int mxl_probe(const AVProbeData *p) {
         goto finally;
     }
 
-    logv(NULL, "MXL probe domain: \"%s\"\n", loc.domain_path);
-    logv(NULL, "MXL probe %d flows:\n", loc.nb_flow_ids);
+    logv(NULL, "probe MXL domain: \"%s\"\n", loc.domain_path);
+    logv(NULL, "probe %d MXL flows:\n", loc.nb_flow_ids);
     int i = 0;
     for (i = 0; i < loc.nb_flow_ids; i++)
         logv(NULL, "  flow id: \"%s\"\n", loc.flow_ids[i]);
@@ -461,10 +461,10 @@ finally:
             reason = "all flows are active";
         }
 
-        logv(NULL, "MXL probe successful (%s)\n", reason);
+        logv(NULL, "probe successful (%s)\n", reason);
     }
 
-    logv(NULL, "MXL probe score = %d\n", score);
+    logv(NULL, "probe score = %d\n", score);
 
     return score;
 }
@@ -1009,17 +1009,17 @@ static int header_validate_flows(AVFormatContext *s,
             video_count++;
             break;
         default:
-            loge(s, "MXL unknown stream context flow type\n");
+            loge(s, "unknown stream context flow type\n");
             return -1;
         }
     }
 
     if (audio_count > 1) {
-        loge(s, "MXL does not support multiple audio flows\n");
+        loge(s, "demuxer does not support multiple audio flows\n");
         return -1;
     }
     else if (video_count > 1) {
-        loge(s, "MXL does not support multiple video flows\n");
+        loge(s, "demuxer does not support multiple video flows\n");
         return -1;
     }
 
@@ -1058,14 +1058,14 @@ static int mxl_read_header(AVFormatContext *s)
 
     int rc = mxl_loc_parse(s, s->url, &loc);
     if (rc) {
-        logv(s, "MXL failed to parse resource locator: %s\n", s->url);
+        logv(s, "failed to parse resource locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     rc = validate_locator(s, &loc);
     if (rc) {
-        logv(s, "MXL invalid locator: %s\n", s->url);
+        logv(s, "invalid locator: %s\n", s->url);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }

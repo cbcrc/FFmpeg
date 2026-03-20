@@ -117,14 +117,14 @@ int mxl_loc_parse(void* logctx, const char *locator, mxl_loc *loc)
     if (mxl_uri_is_mxl_scheme(locator)) {
         int parse_rc = mxl_parse_uri(logctx, locator, &uri);
         if (parse_rc) {
-            logv(logctx, "MXL scheme found but URI parse failed: \"%s\"\n", locator);
+            logv(logctx, "LOC URI scheme found but parse failed: \"%s\"\n", locator);
             exit_status = parse_rc;
             goto finally;
         }
 
         av_assert0(uri.host);
         if (uri.host[0] != '\0') {
-            logv(logctx, "MXL URI host not supported: \"%s\"\n", locator);
+            logv(logctx, "LOC URI host not supported: \"%s\"\n", locator);
             exit_status = AVERROR(EINVAL);
             goto finally;
         }
@@ -144,19 +144,19 @@ int mxl_loc_parse(void* logctx, const char *locator, mxl_loc *loc)
     else if (av_match_ext(locator, MXL_FLOW_EXT)) {
         domain_path = extract_domain_from_path(locator);
         if (NULL == domain_path) {
-            logv(logctx, "MXL URI failed to extract domain\n");
+            logv(logctx, "LOC URI failed to extract domain\n");
             exit_status = AVERROR(EINVAL);
             goto finally;
         }
 
         char *flow_id = extract_flowid_from_path(locator);
         if (NULL == flow_id) {
-            logv(logctx, "MXL URI failed to extract MXL flow id\n");
+            logv(logctx, "LOC URI failed to extract MXL flow id\n");
             exit_status = AVERROR(EINVAL);;
             goto finally;
         }
         if (!mxl_uri_is_valid_uuid(flow_id)) {
-            logv(logctx, "MXL URI flow ID is not a valid uuid: %s\n", flow_id);
+            logv(logctx, "LOC URI flow ID is not a valid uuid: %s\n", flow_id);
             exit_status = AVERROR(EINVAL);
             goto finally;
         }

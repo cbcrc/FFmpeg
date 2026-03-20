@@ -362,7 +362,7 @@ int mxl_json_doc_build2(void* logctx,
     }
 
     if (rc < 0) {
-        loge(logctx, "Failed to parse json: >>%.*s%s<<\n",
+        loge(logctx, "JSON failed to parse: >>%.*s%s<<\n",
              MAX_JSON_LOG, json, json_len > MAX_JSON_LOG ? "..." : "");
 
         av_free(tokens);

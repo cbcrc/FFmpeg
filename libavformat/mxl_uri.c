@@ -152,14 +152,14 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
                  uri);
 
     if (av_strcasecmp(scheme, "mxl") != 0) {
-        logv(logctx, "Unknown URI scheme: %s\n", scheme);
+        logv(logctx, "URI unknown scheme: %s\n", scheme);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     /* require mxl:// (authority marker present) */
     if (len < 6 || av_strncasecmp(uri, "mxl://", 6) != 0) {
-        logv(logctx, "Authority marker required in URI (\"mxl://\")\n");
+        logv(logctx, "URI authority marker required in (\"mxl://\")\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -173,14 +173,14 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
     /* reject empty IPv6 literal: mxl://[]/... */
     const char *auth_start = uri + 6;
     if (auth_start[0] == '[' && host[0] == '\0') {
-        logv(logctx, "Invalid IPv6 host literal: []\n");
+        logv(logctx, "URI invalid IPv6 host literal: []\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
 
     /* reject host without domain path */
     if (!path || path[0] != '/' || path[1] == '\0' || path[1] == '?') {
-        logv(logctx, "MXL URI must contain a non-empty domain path\n");
+        logv(logctx, "URI must contain a non-empty domain path\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -190,7 +190,7 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
     // port. Port equal to 0 is returned in abberrant cases such as
     // absent port or non integer port number.
     if (port < -1 || port == 0 || port > 65535) {
-        logv(logctx, "Invalid URI port: %d\n", port);
+        logv(logctx, "URI invalid port: %d\n", port);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -212,7 +212,7 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
 
     /* domain must exist  */
     if (!path[0]) {
-        logv(logctx, "Invalid URI missing domain path\n");
+        logv(logctx, "URI invalid missing domain path\n");
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
@@ -238,14 +238,14 @@ int mxl_parse_uri(void *logctx, const char *uri, mxl_uri *out)
                 }
 
                 if (flow_id[0] == '\0') {
-                    logv(logctx, "Invalid URI query parameter: %s\n", token);
+                    logv(logctx, "URI invalid query parameter: %s\n", token);
                     av_free(flow_id);
                     exit_status = AVERROR(EINVAL);
                     goto finally;
                 }
 
                 if (!mxl_uri_is_valid_uuid(flow_id)) {
-                    logv(logctx, "Invalid URI flow ID parameter: %s\n", flow_id);
+                    logv(logctx, "URI invalid flow ID parameter: %s\n", flow_id);
                     av_free(flow_id);
                     exit_status = AVERROR(EINVAL);
                     goto finally;
