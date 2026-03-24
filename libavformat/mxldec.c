@@ -1252,7 +1252,7 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
     else if (MXL_ERR_OUT_OF_RANGE_TOO_EARLY == mxl_status) {
-        logv(s, "no grain, too early with grain index %"PRIu64", try again\n",
+        logd(s, "no grain, too early with grain index %"PRIu64", try again\n",
              stream_ctx->flow.video.mxl_grain_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
@@ -1578,17 +1578,17 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
         switch(p->on_too_late) {
         case ON_TOO_LATE_INCREMENT:
-            logd(s, "headIndex = %"PRIu64" vs sample_indx = %"PRIu64" diff = %d\n",
+            logv(s, "headIndex = %"PRIu64" vs sample_indx = %"PRIu64" diff = %d\n",
                  flow_info->runtime.headIndex, stream_ctx->flow.audio.mxl_sample_index,
                  flow_info->runtime.headIndex - stream_ctx->flow.audio.mxl_sample_index);
-            logd(s, "no audio samples, too late with sample index %"PRIu64
+            logv(s, "no audio samples, too late with sample index %"PRIu64
                  ", increment index and try again\n",
                  stream_ctx->flow.audio.mxl_sample_index);
             stream_ctx->flow.audio.mxl_sample_index += max_samples_per_read;
             exit_status = AVERROR(EAGAIN);
             break;
         case ON_TOO_LATE_RESET:
-            logd(s, "no audio samples, too late with sample index %"PRIu64
+            logv(s, "no audio samples, too late with sample index %"PRIu64
                  ", reset index and try again\n",
                  stream_ctx->flow.audio.mxl_sample_index);
             exit_status = AVERROR(EAGAIN);
@@ -1601,7 +1601,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
     else if (MXL_ERR_OUT_OF_RANGE_TOO_EARLY == mxl_status) {
-        logv(s, "no audio samples, too early with sample index %"PRIu64", try again\n",
+        logd(s, "no audio samples, too early with sample index %"PRIu64", try again\n",
              stream_ctx->flow.audio.mxl_sample_index);
         exit_status = AVERROR(EAGAIN);
         goto finally;
