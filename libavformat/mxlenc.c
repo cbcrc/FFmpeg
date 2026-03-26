@@ -483,7 +483,7 @@ static int video_write_packet(AVFormatContext *s, AVPacket *pkt)
     bool grain_open = false;
     uint8_t *payload = NULL;
 
-    logv(s, "write video grain for index = %" PRIu64 "\n",
+    logd(s, "write video grain for index = %" PRIu64 "\n",
          p->state.video.flow.mxl_cur_index);
 
     mxl_status = mxlFlowWriterOpenGrain(p->state.video.flow.mxl_flow_writer,
@@ -686,7 +686,7 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
     bool samples_open = false;
     size_t sample_count = pkt->duration;
 
-    logv(s, "write audio samples for index = %" PRIu64 ", sample_count = %zu\n",
+    logd(s, "write audio samples for index = %" PRIu64 ", sample_count = %zu\n",
          p->state.audio.flow.mxl_cur_index, sample_count);
 
     mxlMutableWrappedMultiBufferSlice payload = (mxlMutableWrappedMultiBufferSlice){0};
