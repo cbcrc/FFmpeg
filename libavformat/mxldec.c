@@ -30,6 +30,8 @@
 #include "mxl_json.h"
 #include "mxl_uri.h"
 #include "mxl_loc.h"
+#include "mxl_diag.h"
+#include "mxl_log.h"
 #include "mxl_common.h"
 #include "mxl_status.h"
 #include "demux.h"
@@ -125,6 +127,7 @@ typedef struct MXLContext {
     int max_audio_samples_per_read;
     GrainIndexInit grain_index_init;
     OnTooLate on_too_late;
+    char *diag_socket;
 
     // interface objects
     mxlInstance mxl_instance;
@@ -140,6 +143,9 @@ typedef struct MXLContext {
 
     // the index of the next stream context to read
     int next_stream_context_idx;
+
+    // diagnostic server
+    mxl_diag_server* diag_server;
 
 } MXLContext;
 
@@ -280,6 +286,15 @@ static const AVOption mxl_options[] = {
         .unit        = "on_too_late",
     },
 
+    {
+        .name        = "diag_socket",
+        .help        = "Unix domain socket path for diagnostic monitoring",
+        .offset      = OFFSET(diag_socket),
+        .type        = AV_OPT_TYPE_STRING,
+        .default_val = { .str = NULL },
+        .flags       = FLAGS,
+    },
+
     { NULL }
 };
 
@@ -296,13 +311,13 @@ static const AVClass mxl_demuxer_class = {
 static void log_probe_data(const AVProbeData *p)
 {
     logv(NULL,
-                "mxl AVProbeData:\n"
-                "  filename: %s\n"
-                "  buf_size: %d\n"
-                "  mime_type: %s\n",
-                p->filename ? p->filename : "(null)",
-                p->buf_size,
-                p->mime_type ? p->mime_type : "(null)");
+         "mxl AVProbeData:\n"
+         "  filename: %s\n"
+         "  buf_size: %d\n"
+         "  mime_type: %s\n",
+         p->filename ? p->filename : "(null)",
+         p->buf_size,
+         p->mime_type ? p->mime_type : "(null)");
 }
 
 static void log_format_context(const AVFormatContext *s)
@@ -1048,6 +1063,7 @@ static int mxl_read_header(AVFormatContext *s)
     mxlInstance mxl_instance = NULL;
     StreamContext *stream_contexts = NULL;
     int initialized_stream_contexts_count = 0;
+    mxl_diag_server *diag_server = NULL;
 
     MXLContext *p = s->priv_data;
 
@@ -1101,6 +1117,23 @@ static int mxl_read_header(AVFormatContext *s)
         goto finally;
     }
 
+    if (p->diag_socket) {
+        logv(s, "diagnostic socket: %s\n", p->diag_socket);
+
+        diag_server = av_mallocz(sizeof(*diag_server));
+        if (!diag_server) {
+            exit_status = AVERROR(ENOMEM);
+            goto finally;
+        }
+
+        rc = mxl_diag_init(s, diag_server, p->diag_socket);
+        if (rc) {
+            loge(s, "mxl_diag_init failed (%d)\n", rc);
+            exit_status = rc;
+            goto finally;
+        }
+    }
+
     // success, transfer state
     p->loc = loc;
     memset(&loc, 0, sizeof(loc));
@@ -1112,6 +1145,9 @@ static int mxl_read_header(AVFormatContext *s)
     stream_contexts = NULL;
 
     p->at_eof = false;
+
+    p->diag_server = diag_server;
+    diag_server = NULL;
 
     header_init_tuning_params(s);
 
@@ -1133,6 +1169,9 @@ finally:
         if (MXL_STATUS_OK != mxl_status)
             logw(s, "mxlDestroyInstance error %s\n", mxl_status_to_str(mxl_status));
     }
+
+    if (diag_server)
+        mxl_diag_close(s, diag_server);
 
     return exit_status;
 }
@@ -1158,6 +1197,8 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
     int exit_status = AVERROR_UNKNOWN;
 
+    uint64_t timestamp = mxlGetTime();
+
     logd(s, "read video packet\n");
 
     if (p->max_video_frames > 0 && stream_ctx->flow.video.frame_count >= p->max_video_frames) {
@@ -1169,7 +1210,8 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     if (0 == stream_ctx->flow.video.mxl_grain_index) {
         switch (p->grain_index_init) {
         case GRAIN_INDEX_INIT_CURRENT: {
-            uint64_t cur_grain_index = mxlGetCurrentIndex(&stream_ctx->flow.video.mxl_grain_rate);
+            uint64_t cur_grain_index =
+                mxlTimestampToIndex(&stream_ctx->flow.video.mxl_grain_rate, timestamp);
             if (MXL_UNDEFINED_INDEX == cur_grain_index) {
                 loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
@@ -1227,6 +1269,17 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         mxl_status = mxlFlowReaderGetGrainNonBlocking(stream_ctx->mxl_flow_reader,
                                                       stream_ctx->flow.video.mxl_grain_index,
                                                       &grain_info, &mxl_payload);
+    }
+
+    if (p->diag_server) {
+        uint64_t head_index = flow_info->runtime.headIndex;
+        uint64_t tail_index = head_index - flow_info->config.discrete.grainCount + 1;
+        mxl_diag_msg msg = {0};
+        mxl_diag_init_msg_video_read(&msg, timestamp, head_index, tail_index,
+                                     stream_ctx->flow.video.mxl_grain_index, mxl_status);
+        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
+        if (diag_rc < 0)
+            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
     }
 
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
@@ -1468,7 +1521,10 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                              const mxlFlowInfo *flow_info)
 {
     MXLContext  *p = s->priv_data;
+
     int exit_status = AVERROR_UNKNOWN;
+
+    uint64_t timestamp = mxlGetTime();
 
     logd(s, "read audio packet\n");
 
@@ -1495,7 +1551,8 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     if (0 == stream_ctx->flow.audio.mxl_sample_index) {
         switch (p->grain_index_init) {
         case GRAIN_INDEX_INIT_CURRENT: {
-            uint64_t cur_sample_index = mxlGetCurrentIndex(&stream_ctx->flow.audio.mxl_sample_rate);
+            uint64_t cur_sample_index =
+                mxlTimestampToIndex(&stream_ctx->flow.audio.mxl_sample_rate, timestamp);
             if (MXL_UNDEFINED_INDEX == cur_sample_index) {
                 loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
@@ -1566,6 +1623,19 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     mxlStatus mxl_status = mxlFlowReaderGetSamples(
         stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
         (size_t)samples_this_read, timeout_ns, &payload);
+
+
+    if (p->diag_server) {
+        uint64_t head_index = flow_info->runtime.headIndex;
+        uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength / 2;
+        mxl_diag_msg msg = {0};
+        mxl_diag_init_msg_audio_read(&msg, timestamp, head_index, tail_index,
+                                     stream_ctx->flow.video.mxl_grain_index,
+                                     (uint32_t)samples_this_read, mxl_status);
+        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
+        if (diag_rc < 0)
+            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
+    }
 
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
 
@@ -1701,6 +1771,12 @@ static int mxl_read_packet(AVFormatContext *s, AVPacket *pkt)
     int exit_status = AVERROR_UNKNOWN;
     bool active = false;
 
+    if (p->diag_server) {
+        int diag_rc = mxl_diag_poll(s, p->diag_server);
+        if (diag_rc < 0)
+            logd(s, "mxl_diag_poll failed (%d)\n", diag_rc);
+    }
+
     mxlStatus mxl_status = mxlIsFlowActive(
         p->mxl_instance, p->loc.flow_ids[stream_ctx_idx], &active);
     if (MXL_STATUS_OK == mxl_status && !active) {
@@ -1784,6 +1860,12 @@ static int mxl_read_close(AVFormatContext *s)
     mxl_loc_free(&p->loc);
 
     p->at_eof = false;
+
+    if (p->diag_server) {
+        mxl_diag_close(s, p->diag_server);
+        av_free(p->diag_server);
+        p->diag_server = NULL;
+    }
 
     return 0;
 }

@@ -26,6 +26,7 @@
 
 #include "mxl_json.h"
 #include "mxl_common.h"
+#include "mxl_log.h"
 
 #include "libavutil/error.h"
 #include "libavutil/avassert.h"

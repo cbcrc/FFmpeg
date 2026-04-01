@@ -10,6 +10,10 @@ fate-mxl-loc: libavformat/tests/mxl_loc$(EXESUF)
 fate-mxl-loc: CMD = run libavformat/tests/mxl_loc$(EXESUF)
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-loc)
 
+fate-mxl-diag: libavformat/tests/mxl_diag$(EXESUF)
+fate-mxl-diag: CMD = run libavformat/tests/mxl_diag$(EXESUF)
+FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-diag)
+
 # Note: MXL_OPTIONS is defined explicitly (even though it matches the
 # default MXL value) to make the test's dependency on this
 # history_duration setting unambiguous and intentional.

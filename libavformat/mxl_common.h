@@ -1,5 +1,5 @@
 /*
- * MXL shared functions for Media eXchange Layer flows
+ * MXL commond definitions for Media eXchange Layer flows
  *
  * Copyright (c) 2025 CBC/Radio-Canada
  *
@@ -22,43 +22,8 @@
 #ifndef AVFORMAT_MXL_COMMON_H
 #define AVFORMAT_MXL_COMMON_H
 
-#include "libavutil/log.h"
-#include <mxl/mxl.h>
-
 #define MXL_FLOW_EXT "mxl-flow"
 #define MXL_DOT_FLOW_EXT ".mxl-flow"
 #define MXL_LONG_NAME "Media eXchange Layer"
-
-static inline void logd(const void *avcl, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    av_vlog((void *)avcl, AV_LOG_DEBUG, fmt, ap);
-    va_end(ap);
-}
-
-static inline void logv(const void *avcl, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    av_vlog((void *)avcl, AV_LOG_VERBOSE, fmt, ap);
-    va_end(ap);
-}
-
-static inline void logw(const void *avcl, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    av_vlog((void *)avcl, AV_LOG_WARNING, fmt, ap);
-    va_end(ap);
-}
-
-static inline void loge(const void *avcl, const char *fmt, ...)
-{
-    va_list ap;
-    va_start(ap, fmt);
-    av_vlog((void *)avcl, AV_LOG_ERROR, fmt, ap);
-    va_end(ap);
-}
 
 #endif /* AVFORMAT_MXL_COMMON_H */

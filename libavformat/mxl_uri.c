@@ -20,7 +20,7 @@
  */
 
 #include "mxl_uri.h"
-#include "mxl_common.h"
+#include "mxl_log.h"
 
 #include "libavformat/avformat.h"
 #include "libavutil/mem.h"

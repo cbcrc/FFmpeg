@@ -25,6 +25,7 @@
  * See: https://github.com/dmf-mxl/mxl
  */
 
+#include "mxl_log.h"
 #include "mxl_common.h"
 #include "mxl_status.h"
 #include "mxl_flow_def.h"

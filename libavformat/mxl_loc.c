@@ -23,6 +23,7 @@
 
 #include "mxl_loc.h"
 #include "mxl_uri.h"
+#include "mxl_log.h"
 #include "mxl_common.h"
 
 #include "libavutil/error.h"

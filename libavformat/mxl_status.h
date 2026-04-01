@@ -22,6 +22,8 @@
 #ifndef AVFORMAT_MXL_STATUS_H
 #define AVFORMAT_MXL_STATUS_H
 
+#include <mxl/mxl.h>
+
 static const char* mxl_status_to_str(mxlStatus status) {
 
     switch(status) {
