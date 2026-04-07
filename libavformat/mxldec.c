@@ -1627,7 +1627,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
     if (p->diag_server) {
         uint64_t head_index = flow_info->runtime.headIndex;
-        uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength / 2;
+        uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength + 1;
         mxl_diag_msg msg = {0};
         mxl_diag_init_msg_audio_read(&msg, timestamp, tail_index, head_index,
                                      stream_ctx->flow.video.mxl_grain_index,
