@@ -95,26 +95,6 @@ MXL_DIAG_LAYOUT_CHECK(sizeof(((mxl_diag_msg *)0)->u.video_read) == 40, video_rea
 MXL_DIAG_LAYOUT_CHECK(sizeof(((mxl_diag_msg *)0)->u.audio_read) == 40, audio_read_size_must_be_40);
 MXL_DIAG_LAYOUT_CHECK(sizeof(mxl_diag_msg) == 56, msg_size_must_be_56);
 
-static inline void mxl_diag_init_msg_connect(mxl_diag_msg *msg)
-{
-    av_assert1(msg);
-    int size = sizeof(msg->header);
-    memset(msg, 0, size);
-    msg->header.version = MXL_DIAG_MSG_VERSION;
-    msg->header.type = MXL_DIAG_MSG_CONNECT;
-    msg->header.size = size;
-}
-
-static inline void mxl_diag_init_msg_release(mxl_diag_msg *msg)
-{
-    av_assert1(msg);
-    int size = sizeof(msg->header);
-    memset(msg, 0, size);
-    msg->header.version = MXL_DIAG_MSG_VERSION;
-    msg->header.type = MXL_DIAG_MSG_RELEASE;
-    msg->header.size = size;
-}
-
 static inline void mxl_diag_init_msg_video_read(
     mxl_diag_msg *msg,
     uint64_t timestamp,

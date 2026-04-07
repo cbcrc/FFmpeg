@@ -112,6 +112,26 @@ typedef struct mxl_diag_client {
     char client_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 } mxl_diag_client;
 
+static inline void mxl_diag_client_init_msg_connect(mxl_diag_msg *msg)
+{
+    av_assert1(msg);
+    int size = sizeof(msg->header);
+    memset(msg, 0, size);
+    msg->header.version = MXL_DIAG_MSG_VERSION;
+    msg->header.type = MXL_DIAG_MSG_CONNECT;
+    msg->header.size = size;
+}
+
+static inline void mxl_diag_client_init_msg_release(mxl_diag_msg *msg)
+{
+    av_assert1(msg);
+    int size = sizeof(msg->header);
+    memset(msg, 0, size);
+    msg->header.version = MXL_DIAG_MSG_VERSION;
+    msg->header.type = MXL_DIAG_MSG_RELEASE;
+    msg->header.size = size;
+}
+
 static int mxl_diag_client_connect(mxl_diag_client *client,
                                    const char *server_path,
                                    const char *client_path)
@@ -166,7 +186,7 @@ static int mxl_diag_client_connect(mxl_diag_client *client,
         return AVERROR(err);
     }
 
-    mxl_diag_init_msg_connect(&msg);
+    mxl_diag_client_init_msg_connect(&msg);
 
     if (send(client->fd, &msg, msg.header.size, 0) < 0) {
         int err = errno;
@@ -193,7 +213,7 @@ static int mxl_diag_client_release(mxl_diag_client *client)
         return AVERROR(EBADF);
     }
 
-    mxl_diag_init_msg_release(&msg);
+    mxl_diag_client_init_msg_release(&msg);
 
     if (send(client->fd, &msg, msg.header.size, 0) < 0) {
         return AVERROR(errno);
