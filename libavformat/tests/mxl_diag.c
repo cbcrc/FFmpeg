@@ -314,20 +314,26 @@ static void print_message(const mxl_diag_msg *msg)
 
     switch (msg->header.type) {
     case MXL_DIAG_MSG_VIDEO_READ:
-        printf("video_read: timestamp = %"PRIu64", tail_index = %"PRIu64
+        printf("video_read: timestamp = %"PRIu64
+               ", exec_dur = %"PRIu64
+               ", tail_index = %"PRIu64
                ", head_index = %"PRIu64", read_index = %"PRIu64
                ", mxl_status = %"PRIu32"\n",
                msg->u.video_read.timestamp,
+               msg->u.video_read.exec_dur,
                msg->u.video_read.tail_index,
                msg->u.video_read.head_index,
                msg->u.video_read.read_index,
                msg->u.video_read.mxl_status);
         break;
     case MXL_DIAG_MSG_AUDIO_READ:
-        printf("audio_read: timestamp = %"PRIu64", tail_index = %"PRIu64
+        printf("audio_read: timestamp = %"PRIu64
+               ", exec_dur = %"PRIu64
+               ", tail_index = %"PRIu64
                ", head_index = %"PRIu64", read_index = %"PRIu64
                ", read_size = %"PRIu32", mxl_status = %"PRIu32"\n",
                msg->u.audio_read.timestamp,
+               msg->u.audio_read.exec_dur,
                msg->u.audio_read.tail_index,
                msg->u.audio_read.head_index,
                msg->u.audio_read.read_index,
@@ -681,12 +687,12 @@ static void test_server_init_msg(mxl_diag_msg *msg, uint64_t base_index)
 
     if (base_index%2) {
         mxl_diag_init_msg_video_read(
-            msg, base_index, base_index + 1, base_index + 2, base_index + 3,
+            msg, base_index, base_index + 1, base_index + 2, base_index + 3, base_index + 4,
             MXL_STATUS_OK);
     }
     else {
         mxl_diag_init_msg_audio_read(
-            msg, base_index, base_index + 1, base_index + 2, base_index + 3,
+            msg, base_index, base_index + 1, base_index + 2, base_index + 3, base_index + 4,
             48000/FPS, MXL_STATUS_OK);
     }
 }

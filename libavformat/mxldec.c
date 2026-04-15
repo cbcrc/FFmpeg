@@ -1271,17 +1271,6 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                                                       &grain_info, &mxl_payload);
     }
 
-    if (p->diag_server) {
-        uint64_t head_index = flow_info->runtime.headIndex;
-        uint64_t tail_index = head_index - flow_info->config.discrete.grainCount + 1;
-        mxl_diag_msg msg = {0};
-        mxl_diag_init_msg_video_read(&msg, timestamp, tail_index, head_index,
-                                     stream_ctx->flow.video.mxl_grain_index, mxl_status);
-        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
-        if (diag_rc < 0)
-            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
-    }
-
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
         switch(p->on_too_late) {
         case ON_TOO_LATE_INCREMENT:
@@ -1384,6 +1373,18 @@ finally:
 
     if (exit_status < 0)
         av_packet_unref(pkt);
+
+    if (p->diag_server) {
+        uint64_t duration = mxlGetTime() - timestamp;
+        uint64_t head_index = flow_info->runtime.headIndex;
+        uint64_t tail_index = head_index - flow_info->config.discrete.grainCount + 1;
+        mxl_diag_msg msg = {0};
+        mxl_diag_init_msg_video_read(&msg, timestamp, duration, tail_index, head_index,
+                                     stream_ctx->flow.video.mxl_grain_index, mxl_status);
+        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
+        if (diag_rc < 0)
+            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
+    }
 
     return exit_status;
 }
@@ -1624,19 +1625,6 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
         (size_t)samples_this_read, timeout_ns, &payload);
 
-
-    if (p->diag_server) {
-        uint64_t head_index = flow_info->runtime.headIndex;
-        uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength + 1;
-        mxl_diag_msg msg = {0};
-        mxl_diag_init_msg_audio_read(&msg, timestamp, tail_index, head_index,
-                                     stream_ctx->flow.video.mxl_grain_index,
-                                     (uint32_t)samples_this_read, mxl_status);
-        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
-        if (diag_rc < 0)
-            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
-    }
-
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
 
         static int64_t last_log_time;
@@ -1741,6 +1729,19 @@ finally:
 
     if (exit_status < 0)
         av_packet_unref(pkt);
+
+    if (p->diag_server) {
+        uint64_t duration = mxlGetTime() - timestamp;
+        uint64_t head_index = flow_info->runtime.headIndex;
+        uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength + 1;
+        mxl_diag_msg msg = {0};
+        mxl_diag_init_msg_audio_read(&msg, timestamp, duration, tail_index, head_index,
+                                     stream_ctx->flow.video.mxl_grain_index,
+                                     (uint32_t)samples_this_read, mxl_status);
+        int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
+        if (diag_rc < 0)
+            logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
+    }
 
     return exit_status;
 }
