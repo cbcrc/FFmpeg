@@ -1729,7 +1729,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                 next_pts > stream_ctx->flow.audio.last_pts));
 
     if (next_pts - stream_ctx->flow.audio.last_pts > samples_this_read)
-        logi(s, "audio pts jumped %d samples\n", next_pts - stream_ctx->flow.video.last_pts);
+        logi(s, "audio pts jumped %d samples\n", next_pts - stream_ctx->flow.audio.last_pts);
 
     stream_ctx->flow.audio.last_pts = next_pts;
 
