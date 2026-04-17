@@ -77,6 +77,7 @@ typedef struct VideoState {
     mxlRational mxl_grain_rate;
     uint64_t mxl_start_grain_index;
     uint64_t mxl_grain_index;
+    uint64_t last_pts;
     int frame_count;
 } VideoState;
 
@@ -86,6 +87,7 @@ typedef struct AudioState {
     uint64_t mxl_sample_index;
     struct SwrContext *swr_context;
     int sample_point_count;
+    uint64_t last_pts;
 } AudioState;
 
 typedef enum FlowType {
@@ -1198,6 +1200,7 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     int exit_status = AVERROR_UNKNOWN;
 
     uint64_t timestamp = mxlGetTime();
+    uint64_t diag_read_index = 0;
 
     logd(s, "read video packet\n");
 
@@ -1252,7 +1255,7 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     mxlGrainInfo grain_info = {0};
     uint8_t *mxl_payload = NULL;
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
-
+    diag_read_index = stream_ctx->flow.video.mxl_grain_index;
     if ((p->blocking == -1 && p->tuning.video_blocking_read) || p->blocking == 1) {
         logd(s, "blocking video frame read, grain index %"PRIu64"\n",
              stream_ctx->flow.video.mxl_grain_index);
@@ -1348,20 +1351,29 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         memcpy(pkt->data, mxl_payload, grain_size);
     }
 
-    int64_t rel_grain_count =
+    int64_t next_pts =
         stream_ctx->flow.video.mxl_grain_index - stream_ctx->flow.video.mxl_start_grain_index;
-    av_assert1(rel_grain_count >= 0);
+
+    // monotonic pts sanity check
+    av_assert0(next_pts >= 0 &&
+               (stream_ctx->flow.video.last_pts == 0 ||
+                next_pts > stream_ctx->flow.video.last_pts));
+
+    if (next_pts - stream_ctx->flow.video.last_pts > 1)
+        logi(s, "video pts jumped %d frames\n", next_pts - stream_ctx->flow.video.last_pts);
+
+    stream_ctx->flow.video.last_pts = next_pts;
 
     pkt->pos = -1;
-    pkt->pts = rel_grain_count;
-    pkt->dts = rel_grain_count;
+    pkt->pts = next_pts;
+    pkt->dts = next_pts;
     pkt->duration = 1;
     pkt->stream_index = stream_ctx->stream_index;
     pkt->flags |= AV_PKT_FLAG_KEY;
 
-    logd(s, "good frame, grain_index=%"PRIu64", relative_grain_count=%"PRId64
+    logd(s, "good frame, grain_index=%"PRIu64", next_pts=%"PRId64
          ", pkt->data=%p, mxl_payload=%p\n",
-         stream_ctx->flow.video.mxl_grain_index, rel_grain_count, pkt->data, mxl_payload);
+         stream_ctx->flow.video.mxl_grain_index, next_pts, pkt->data, mxl_payload);
 
     // all good, advance the grain index
     stream_ctx->flow.video.mxl_grain_index++;
@@ -1375,12 +1387,13 @@ finally:
         av_packet_unref(pkt);
 
     if (p->diag_server) {
-        uint64_t duration = mxlGetTime() - timestamp;
+        uint64_t exec_dur = mxlGetTime() - timestamp;
         uint64_t head_index = flow_info->runtime.headIndex;
         uint64_t tail_index = head_index - flow_info->config.discrete.grainCount + 1;
         mxl_diag_msg msg = {0};
-        mxl_diag_init_msg_video_read(&msg, timestamp, duration, tail_index, head_index,
-                                     stream_ctx->flow.video.mxl_grain_index, mxl_status);
+        mxl_diag_init_msg_video_read(&msg, timestamp, exec_dur,
+                                     tail_index, head_index,
+                                     diag_read_index, mxl_status);
         int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
         if (diag_rc < 0)
             logd(s, "mxl_diag_send failed (%d)\n", diag_rc);
@@ -1471,7 +1484,7 @@ static int mxl_payload_to_ffmpeg_packet(AVFormatContext *s,
         }
 
         int nb_samples1 = rc;
-
+        (void)nb_samples1;
         av_assert1((nb_samples0 + nb_samples1)*sizeof(float) ==
                    (payload->base.fragments[0].size + payload->base.fragments[1].size));
     }
@@ -1526,6 +1539,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     int exit_status = AVERROR_UNKNOWN;
 
     uint64_t timestamp = mxlGetTime();
+    uint64_t diag_read_index = 0;
 
     logd(s, "read audio packet\n");
 
@@ -1619,6 +1633,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     const AVRational ns_time_base = {1, 1000000000};
     uint64_t timeout_ns = (uint64_t)av_rescale_q(max_samples_per_read, st->time_base, ns_time_base);
     mxlWrappedMultiBufferSlice payload = {0};
+    diag_read_index = stream_ctx->flow.audio.mxl_sample_index;
     logd(s, "non-blocking audio read, %d samples at index %"PRIu64"\n",
          samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
     mxlStatus mxl_status = mxlFlowReaderGetSamples(
@@ -1704,18 +1719,28 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
 
-    int64_t rel_sample_count =
-        stream_ctx->flow.audio.mxl_sample_index - stream_ctx->flow.audio.mxl_start_sample_index;
-    av_assert1(rel_sample_count >= 0);
 
-    pkt->pts      = rel_sample_count;
-    pkt->dts      = rel_sample_count;
+    int64_t next_pts =
+        stream_ctx->flow.audio.mxl_sample_index - stream_ctx->flow.audio.mxl_start_sample_index;
+
+    // monotonic pts sanity check
+    av_assert0(next_pts >= 0 &&
+               (stream_ctx->flow.audio.last_pts == 0 ||
+                next_pts > stream_ctx->flow.audio.last_pts));
+
+    if (next_pts - stream_ctx->flow.audio.last_pts > samples_this_read)
+        logi(s, "audio pts jumped %d samples\n", next_pts - stream_ctx->flow.video.last_pts);
+
+    stream_ctx->flow.audio.last_pts = next_pts;
+
+    pkt->pts      = next_pts;
+    pkt->dts      = next_pts;
     pkt->duration = samples_this_read;
     pkt->stream_index = stream_ctx->stream_index;
 
-    logd(s, "good audio block, sample_index=%"PRIu64", relative_sample_count=%"PRId64
+    logd(s, "good audio block, sample_index=%"PRIu64", next_pts=%"PRId64
          ", samples_this_read = %d, pkt->data=%p mxl_payload_0=%p, mxl_payload_1=%p\n",
-         stream_ctx->flow.audio.mxl_sample_index, rel_sample_count, samples_this_read, pkt->data,
+         stream_ctx->flow.audio.mxl_sample_index, next_pts, samples_this_read, pkt->data,
          payload.base.fragments[0].pointer,
          payload.base.fragments[1].size > 0 ? payload.base.fragments[1].pointer : NULL);
 
@@ -1735,8 +1760,9 @@ finally:
         uint64_t head_index = flow_info->runtime.headIndex;
         uint64_t tail_index = head_index - flow_info->config.continuous.bufferLength + 1;
         mxl_diag_msg msg = {0};
-        mxl_diag_init_msg_audio_read(&msg, timestamp, duration, tail_index, head_index,
-                                     stream_ctx->flow.video.mxl_grain_index,
+        mxl_diag_init_msg_audio_read(&msg, timestamp, duration,
+                                     tail_index, head_index,
+                                     diag_read_index,
                                      (uint32_t)samples_this_read, mxl_status);
         int diag_rc = mxl_diag_send(s, p->diag_server, &msg);
         if (diag_rc < 0)

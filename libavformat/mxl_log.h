@@ -40,6 +40,14 @@ static inline void logv(const void *avcl, const char *fmt, ...)
     va_end(ap);
 }
 
+static inline void logi(const void *avcl, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    av_vlog((void *)avcl, AV_LOG_INFO, fmt, ap);
+    va_end(ap);
+}
+
 static inline void logw(const void *avcl, const char *fmt, ...)
 {
     va_list ap;

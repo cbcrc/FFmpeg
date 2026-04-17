@@ -618,7 +618,7 @@ static int ffmpeg_packet_to_mxl_payload(AVFormatContext *s,
         }
 
         int nb_samples1 = rc;
-
+        (void)nb_samples1;
         av_assert1((nb_samples0 + nb_samples1)*sizeof(float) ==
                    (payload->base.fragments[0].size + payload->base.fragments[1].size));
     }
