@@ -671,7 +671,7 @@ OBJS-$(CONFIG_LIBOPENMPT_DEMUXER)        += libopenmpt.o
 OBJS-$(CONFIG_VAPOURSYNTH_DEMUXER)       += vapoursynth.o
 
 # MXL demuxer/muxer
-OBJS-$(CONFIG_MXL_DEMUXER)               += mxldec.o mxl_diag.o mxl_uri.o mxl_loc.o mxl_json.o jsmn.o
+OBJS-$(CONFIG_MXL_DEMUXER)               += mxldec.o mxl_dump.o mxl_diag.o mxl_uri.o mxl_loc.o mxl_json.o jsmn.o
 OBJS-$(CONFIG_MXL_MUXER)                 += mxlenc.o mxl_diag.o mxl_json.o jsmn.o
 
 # protocols I/O

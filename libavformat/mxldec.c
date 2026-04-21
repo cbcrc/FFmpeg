@@ -31,6 +31,7 @@
 #include "mxl_uri.h"
 #include "mxl_loc.h"
 #include "mxl_diag.h"
+#include "mxl_dump.h"
 #include "mxl_log.h"
 #include "mxl_common.h"
 #include "mxl_status.h"
@@ -130,6 +131,7 @@ typedef struct MXLContext {
     GrainIndexInit grain_index_init;
     OnTooLate on_too_late;
     char *diag_socket;
+    char *audio_dump_file;
 
     // interface objects
     mxlInstance mxl_instance;
@@ -149,8 +151,9 @@ typedef struct MXLContext {
     // diagnostic server
     mxl_diag_server* diag_server;
 
+    // audio sample writer
+    mxl_dump_audio_writer* audio_dump_writer;
 } MXLContext;
-
 
 #define OFFSET(x) offsetof(MXLContext, x)
 #define FLAGS AV_OPT_FLAG_DECODING_PARAM
@@ -292,6 +295,15 @@ static const AVOption mxl_options[] = {
         .name        = "diag_socket",
         .help        = "Unix domain socket path for diagnostic monitoring",
         .offset      = OFFSET(diag_socket),
+        .type        = AV_OPT_TYPE_STRING,
+        .default_val = { .str = NULL },
+        .flags       = FLAGS,
+    },
+
+    {
+        .name        = "audio_dump_file",
+        .help        = "Write demuxed audio PCM samples to a raw output file",
+        .offset      = OFFSET(audio_dump_file),
         .type        = AV_OPT_TYPE_STRING,
         .default_val = { .str = NULL },
         .flags       = FLAGS,
@@ -1066,6 +1078,7 @@ static int mxl_read_header(AVFormatContext *s)
     StreamContext *stream_contexts = NULL;
     int initialized_stream_contexts_count = 0;
     mxl_diag_server *diag_server = NULL;
+    mxl_dump_audio_writer *audio_dump_writer = NULL;
 
     MXLContext *p = s->priv_data;
 
@@ -1136,6 +1149,22 @@ static int mxl_read_header(AVFormatContext *s)
         }
     }
 
+    if (p->audio_dump_file) {
+        logv(s, "audio dump path: %s\n", p->audio_dump_file);
+
+        audio_dump_writer = av_mallocz(sizeof(*audio_dump_writer));
+        if (!audio_dump_writer) {
+            exit_status = AVERROR(ENOMEM);
+            goto finally;
+        }
+
+        int rc = mxl_dump_init_audio_writer(audio_dump_writer, p->audio_dump_file);
+        if (rc) {
+            loge(s, "failed to init audio dump writer (%d)\n", rc);
+            return AVERROR(rc);
+        }
+    }
+
     // success, transfer state
     p->loc = loc;
     memset(&loc, 0, sizeof(loc));
@@ -1150,6 +1179,9 @@ static int mxl_read_header(AVFormatContext *s)
 
     p->diag_server = diag_server;
     diag_server = NULL;
+
+    p->audio_dump_writer = audio_dump_writer;
+    audio_dump_writer = NULL;
 
     header_init_tuning_params(s);
 
@@ -1174,6 +1206,9 @@ finally:
 
     if (diag_server)
         mxl_diag_close(s, diag_server);
+
+    if (audio_dump_writer)
+        mxl_dump_close_audio_writer(audio_dump_writer);
 
     return exit_status;
 }
@@ -1719,7 +1754,6 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
 
-
     int64_t next_pts =
         stream_ctx->flow.audio.mxl_sample_index - stream_ctx->flow.audio.mxl_start_sample_index;
 
@@ -1751,6 +1785,10 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     exit_status = 0;
 
 finally:
+
+    if (exit_status == 0 && p->audio_dump_writer) {
+        mxl_dump_write_audio(p->audio_dump_writer, pkt->data, pkt->size);
+    }
 
     if (exit_status < 0)
         av_packet_unref(pkt);
@@ -1892,6 +1930,12 @@ static int mxl_read_close(AVFormatContext *s)
         mxl_diag_close(s, p->diag_server);
         av_free(p->diag_server);
         p->diag_server = NULL;
+    }
+
+    if (p->audio_dump_writer) {
+        mxl_dump_close_audio_writer(p->audio_dump_writer);
+        av_free(p->audio_dump_writer);
+        p->audio_dump_writer = NULL;
     }
 
     return 0;
