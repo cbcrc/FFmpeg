@@ -1,0 +1,82 @@
+testing mxl_diag: mxl diagnostic server
+
+
+test: init fails if server path exists as a non-socket
+
+test: init cleans up stale socket path
+
+test: release with no active client is ignored
+
+test: valid connect works after junk from unrelated socket
+
+test: mxl_diag_poll returns expected codes for malformed messages
+bad size, datagram smaller than sizeof(msg.header)
+bad size, header.size smaller than sizeof(msg.header)
+bad size, header.size bigger than sizeof(msg)
+bad size, datagram size vs header.size mismatch
+bad size, truncated datagram
+bad version
+unknown type
+truncated header
+connect message size mismatch
+release message size mismatch
+
+test: print message stream
+msg: version=1, type=4, size=64
+audio_read: timestamp = 0, exec_dur = 1, tail_index = 2, head_index = 3, read_index = 4, read_size = 1600, mxl_status = 0
+msg: version=1, type=3, size=64
+video_read: timestamp = 1, exec_dur = 2, tail_index = 3, head_index = 4, read_index = 5, mxl_status = 0
+msg: version=1, type=4, size=64
+audio_read: timestamp = 2, exec_dur = 3, tail_index = 4, head_index = 5, read_index = 6, read_size = 1600, mxl_status = 0
+msg: version=1, type=3, size=64
+video_read: timestamp = 3, exec_dur = 4, tail_index = 5, head_index = 6, read_index = 7, mxl_status = 0
+msg: version=1, type=4, size=64
+audio_read: timestamp = 4, exec_dur = 5, tail_index = 6, head_index = 7, read_index = 8, read_size = 1600, mxl_status = 0
+msg: version=1, type=3, size=64
+video_read: timestamp = 5, exec_dur = 6, tail_index = 7, head_index = 8, read_index = 9, mxl_status = 0
+msg: version=1, type=4, size=64
+audio_read: timestamp = 6, exec_dur = 7, tail_index = 8, head_index = 9, read_index = 10, read_size = 1600, mxl_status = 0
+msg: version=1, type=3, size=64
+video_read: timestamp = 7, exec_dur = 8, tail_index = 9, head_index = 10, read_index = 11, mxl_status = 0
+msg: version=1, type=4, size=64
+audio_read: timestamp = 8, exec_dur = 9, tail_index = 10, head_index = 11, read_index = 12, read_size = 1600, mxl_status = 0
+msg: version=1, type=3, size=64
+video_read: timestamp = 9, exec_dur = 10, tail_index = 11, head_index = 12, read_index = 13, mxl_status = 0
+
+test: multiple connect attempts are ignored after the first
+client A connected
+msg: version=1, type=3, size=64
+video_read: timestamp = 11, exec_dur = 12, tail_index = 13, head_index = 14, read_index = 15, mxl_status = 0
+client B timed out (expected)
+msg: version=1, type=4, size=64
+audio_read: timestamp = 12, exec_dur = 13, tail_index = 14, head_index = 15, read_index = 16, read_size = 1600, mxl_status = 0
+client A was unaffected by client B
+client C timed out (expected)
+msg: version=1, type=3, size=64
+video_read: timestamp = 13, exec_dur = 14, tail_index = 15, head_index = 16, read_index = 17, mxl_status = 0
+client A was unaffected by client C
+client B still times out
+
+test: malformed messages from active client are ignored
+msg: version=1, type=4, size=64
+audio_read: timestamp = 22, exec_dur = 23, tail_index = 24, head_index = 25, read_index = 26, read_size = 1600, mxl_status = 0
+bad size, message too short
+bad size, header size sanity (too small)
+bad size, header size sanity (too big)
+unknown type, truncated header
+bad version
+unknown type
+garbage message
+bad size, message too short
+bad size, header size sanity (too small)
+bad size, header size sanity (too big)
+unknown type, truncated header
+bad version
+unknown type
+garbage message
+sent 14 malformed messages from active client A
+msg: version=1, type=3, size=64
+video_read: timestamp = 23, exec_dur = 24, tail_index = 25, head_index = 26, read_index = 27, mxl_status = 0
+client A unaffected by malformed traffic
+
+PASS
