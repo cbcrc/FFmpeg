@@ -1965,8 +1965,7 @@ const FFInputFormat ff_mxl_demuxer = {
      // unimplemented
      .read_seek            = NULL, // not seekable
      .read_seek2           = NULL, // no timestamp seeking
-     .read_play            = NULL, // no pause/resume
-     .read_pause           = NULL, // no pause/resume
+     .read_set_state       = NULL, // no pause/resume
      .read_timestamp       = NULL, // no timestamp probing
      .get_device_list      = NULL, // not a device input
 

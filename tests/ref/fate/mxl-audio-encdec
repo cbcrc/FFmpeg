@@ -1,7 +1,6 @@
 #format: frame checksums
 #version: 2
 #hash: MD5
-#software: Lavf62.6.101
 #tb 0: 1/48000
 #media_type 0: audio
 #codec_id 0: pcm_s16le

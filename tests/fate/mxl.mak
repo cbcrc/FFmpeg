@@ -111,7 +111,7 @@ fate-mxl-video-encdec: CMD = \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
             -f mxl -max_video_frames 5 -grain_index_init 2 \
             -i domain/$(MXL_VIDEO_FLOW_ID).mxl-flow \
-            -f framemd5 pipe:1, \
+            -bitexact -f framemd5 pipe:1, \
         demuxer)
 fate-mxl-video-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-video-encdec
 FATE-yes += \
@@ -130,7 +130,7 @@ fate-mxl-audio-encdec: CMD = \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
             -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -grain_index_init 2 \
             -i domain/$(MXL_AUDIO_FLOW_ID).mxl-flow \
-            -f framemd5 pipe:1, \
+            -bitexact -f framemd5 pipe:1, \
         demuxer)
 fate-mxl-audio-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-audio-encdec
 FATE-yes += \
@@ -153,7 +153,7 @@ fate-mxl-av-encdec: CMD = \
             -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) \
             -grain_index_init 2 \
             -i "mxl://$$(pwd)/domain?id=$(MXL_VIDEO_FLOW_ID)&id=$(MXL_AUDIO_FLOW_ID)" \
-            -f framemd5 pipe:1, \
+            -bitexact -f framemd5 pipe:1, \
         demuxer)
 fate-mxl-av-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-av-encdec
 FATE-yes += \
