@@ -37,6 +37,7 @@
 #include "mxl_status.h"
 #include "demux.h"
 #include "avformat.h"
+#include "internal.h"
 
 #include "libswresample/swresample.h"
 #include "libavutil/channel_layout.h"
@@ -63,11 +64,11 @@
 #include <limits.h>
 #include <math.h>
 
-typedef enum GrainIndexInit {
-    GRAIN_INDEX_INIT_CURRENT = 0,
-    GRAIN_INDEX_INIT_HEAD,
-    GRAIN_INDEX_INIT_TAIL,
-} GrainIndexInit;
+typedef enum MXLReadIndexInit {
+    MXL_READ_INDEX_INIT_CURRENT = 0,
+    MXL_READ_INDEX_INIT_HEAD,
+    MXL_READ_INDEX_INIT_TAIL,
+} MXLReadIndexInit;
 
 typedef enum OnTooLate {
     ON_TOO_LATE_INCREMENT = 0,
@@ -76,19 +77,18 @@ typedef enum OnTooLate {
 
 typedef struct VideoState {
     mxlRational mxl_grain_rate;
-    uint64_t mxl_start_grain_index;
     uint64_t mxl_grain_index;
-    uint64_t last_pts;
+    int64_t last_pts;
     int frame_count;
 } VideoState;
 
 typedef struct AudioState {
     mxlRational mxl_sample_rate;
-    uint64_t mxl_start_sample_index;
     uint64_t mxl_sample_index;
-    struct SwrContext *swr_context;
     int sample_point_count;
-    uint64_t last_pts;
+    int64_t last_pts;
+    int last_packet_duration;
+    struct SwrContext *swr_context;
 } AudioState;
 
 typedef enum FlowType {
@@ -124,11 +124,10 @@ typedef struct MXLContext {
     // options
     int zero_copy;
     int blocking;
-    int reset_on_drop;
     int max_video_frames;
     int max_audio_samples;
     int max_audio_samples_per_read;
-    GrainIndexInit grain_index_init;
+    MXLReadIndexInit mxl_read_index_init;
     OnTooLate on_too_late;
     char *diag_socket;
     char *audio_dump_file;
@@ -180,16 +179,6 @@ static const AVOption mxl_options[] = {
         .flags = FLAGS
     },
     {
-        .name        = "reset_on_drop",
-        .help        = "Reset presentation timestamp to zero on frame drop.",
-        .offset      = OFFSET(reset_on_drop),
-        .type        = AV_OPT_TYPE_BOOL,
-        .default_val = { .i64 = 0 },
-        .min         = 0,
-        .max         = 1,
-        .flags       = FLAGS
-    },
-    {
         .name        = "max_video_frames",
         .help        = "stop at exactly N video frames",
         .offset      = OFFSET(max_video_frames),
@@ -220,50 +209,50 @@ static const AVOption mxl_options[] = {
         .flags       = FLAGS
     },
 
-    // grain_index_init option group
+    // mxl_read_index_init option group
     {
-        .name        = "grain_index_init",
-        .help        = "initial MXL grain index",
-        .offset      = OFFSET(grain_index_init),
+        .name        = "mxl_read_index_init",
+        .help        = "initial MXL read index, enforcing index monotonicity",
+        .offset      = OFFSET(mxl_read_index_init),
         .type        = AV_OPT_TYPE_INT,
-        .default_val = { .i64 = GRAIN_INDEX_INIT_CURRENT },
-        .min         = GRAIN_INDEX_INIT_CURRENT,
-        .max         = GRAIN_INDEX_INIT_TAIL,
+        .default_val = { .i64 = MXL_READ_INDEX_INIT_CURRENT },
+        .min         = MXL_READ_INDEX_INIT_CURRENT,
+        .max         = MXL_READ_INDEX_INIT_TAIL,
         .flags       = FLAGS,
-        .unit        = "grain_index_init",
+        .unit        = "mxl_read_index_init",
     },
     {
         .name        = "current",
         .help        = "current time",
         .offset      = 0,
         .type        = AV_OPT_TYPE_CONST,
-        .default_val = { .i64 = GRAIN_INDEX_INIT_CURRENT },
+        .default_val = { .i64 = MXL_READ_INDEX_INIT_CURRENT },
         .flags       = FLAGS,
-        .unit        = "grain_index_init",
+        .unit        = "mxl_read_index_init",
     },
     {
         .name        = "head",
         .help        = "ring buffer head",
         .offset      = 0,
         .type        = AV_OPT_TYPE_CONST,
-        .default_val = { .i64 = GRAIN_INDEX_INIT_HEAD },
+        .default_val = { .i64 = MXL_READ_INDEX_INIT_HEAD },
         .flags       = FLAGS,
-        .unit        = "grain_index_init",
+        .unit        = "mxl_read_index_init",
     },
     {
         .name        = "tail",
         .help        = "ring buffer tail",
         .offset      = 0,
         .type        = AV_OPT_TYPE_CONST,
-        .default_val = { .i64 = GRAIN_INDEX_INIT_TAIL },
+        .default_val = { .i64 = MXL_READ_INDEX_INIT_TAIL },
         .flags       = FLAGS,
-        .unit        = "grain_index_init",
+        .unit        = "mxl_read_index_init",
     },
 
     // on_too_late option group
     {
         .name        = "on_too_late",
-        .help        = "action when MXL reports grain index too late",
+        .help        = "action when MXL reports read index too late",
         .offset      = OFFSET(on_too_late),
         .type        = AV_OPT_TYPE_INT,
         .default_val = { .i64 = ON_TOO_LATE_INCREMENT },
@@ -274,7 +263,7 @@ static const AVOption mxl_options[] = {
     },
     {
         .name        = "increment",
-        .help        = "increment the grain index",
+        .help        = "increment the read index",
         .offset      = 0,
         .type        = AV_OPT_TYPE_CONST,
         .default_val = { .i64 = ON_TOO_LATE_INCREMENT },
@@ -283,7 +272,7 @@ static const AVOption mxl_options[] = {
     },
     {
         .name        = "reset",
-        .help        = "reset to position defined by grain_index_init",
+        .help        = "reinitialize using mxl_read_index_init",
         .offset      = 0,
         .type        = AV_OPT_TYPE_CONST,
         .default_val = { .i64 = ON_TOO_LATE_RESET },
@@ -596,13 +585,17 @@ static int read_video_header(AVFormatContext *s, mxlFlowInfo *flow_info,
     st->codecpar->field_order = AV_FIELD_PROGRESSIVE;
 
     st->avg_frame_rate = st->codecpar->framerate;
-    st->time_base = av_inv_q(st->codecpar->framerate);
+
+    // Set time base and disable timestamp wrap for absolute MXL indices.
+    avpriv_set_pts_info(st, 64,
+                    (unsigned int)grain_rate_den.value,
+                    (unsigned int)grain_rate_num.value);
 
     SET_META(st, "mxl_colorspace", colorspace.value);
 
     flow_state->video.mxl_grain_rate = flow_info->config.common.grainRate;
-    flow_state->video.mxl_start_grain_index = 0;
     flow_state->video.mxl_grain_index = 0;
+    flow_state->video.last_pts = AV_NOPTS_VALUE;
 
     exit_status = 0;
 
@@ -720,10 +713,17 @@ static int read_audio_header(AVFormatContext *s, mxlFlowInfo *flow_info,
     st->codecpar->ch_layout.nb_channels = (int)channel_count.value;
     st->codecpar->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;
 
-    st->time_base     = (AVRational){ 1, st->codecpar->sample_rate };
     st->avg_frame_rate = (AVRational){ 0, 1 };
 
+    // Set time base and disable timestamp wrap for absolute MXL indices.
+    avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
+
     flow_state->audio.mxl_sample_rate = flow_info->config.common.grainRate;
+    flow_state->audio.mxl_sample_index = 0;
+    flow_state->audio.sample_point_count = 0;
+    flow_state->audio.last_pts = AV_NOPTS_VALUE;
+    flow_state->audio.last_packet_duration = 0;
+
     int rc = init_swr_context(&flow_state->audio.swr_context,
                               st->codecpar->ch_layout.nb_channels,
                               st->codecpar->sample_rate);
@@ -1161,7 +1161,8 @@ static int mxl_read_header(AVFormatContext *s)
         int rc = mxl_dump_init_audio_writer(audio_dump_writer, p->audio_dump_file);
         if (rc) {
             loge(s, "failed to init audio dump writer (%d)\n", rc);
-            return AVERROR(rc);
+            exit_status = AVERROR(rc);
+            goto finally;
         }
     }
 
@@ -1204,11 +1205,15 @@ finally:
             logw(s, "mxlDestroyInstance error %s\n", mxl_status_to_str(mxl_status));
     }
 
-    if (diag_server)
+    if (diag_server) {
         mxl_diag_close(s, diag_server);
+        av_free(diag_server);
+    }
 
-    if (audio_dump_writer)
+    if (audio_dump_writer) {
         mxl_dump_close_audio_writer(audio_dump_writer);
+        av_free(audio_dump_writer);
+    }
 
     return exit_status;
 }
@@ -1236,6 +1241,9 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
     uint64_t timestamp = mxlGetTime();
     uint64_t diag_read_index = 0;
+    const int64_t last_pts = stream_ctx->flow.video.last_pts;
+
+    mxlStatus mxl_status = MXL_ERR_UNKNOWN;
 
     logd(s, "read video packet\n");
 
@@ -1246,12 +1254,12 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
     // init grain index
     if (0 == stream_ctx->flow.video.mxl_grain_index) {
-        switch (p->grain_index_init) {
-        case GRAIN_INDEX_INIT_CURRENT: {
+        switch (p->mxl_read_index_init) {
+        case MXL_READ_INDEX_INIT_CURRENT: {
             uint64_t cur_grain_index =
                 mxlTimestampToIndex(&stream_ctx->flow.video.mxl_grain_rate, timestamp);
             if (MXL_UNDEFINED_INDEX == cur_grain_index) {
-                loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
+                loge(s, "mxlTimestampToIndex returned error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
                 goto finally;
             }
@@ -1260,36 +1268,44 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                  stream_ctx->flow.video.mxl_grain_index);
             break;
         }
-        case GRAIN_INDEX_INIT_HEAD:
+        case MXL_READ_INDEX_INIT_HEAD:
             stream_ctx->flow.video.mxl_grain_index = flow_info->runtime.headIndex;
             logv(s, "init video grain index = %"PRIu64", policy: headIndex\n",
                  stream_ctx->flow.video.mxl_grain_index);
             break;
-        case GRAIN_INDEX_INIT_TAIL:
+        case MXL_READ_INDEX_INIT_TAIL:
             stream_ctx->flow.video.mxl_grain_index = flow_info->runtime.headIndex -
                 flow_info->config.discrete.grainCount + 1;
             logv(s, "init video grain index = %"PRIu64", policy: tail index\n",
                  stream_ctx->flow.video.mxl_grain_index);
             break;
         default:
-            loge(s, "unrecognized grain_index_init = \"%d\"\n", p->grain_index_init);
+            loge(s, "unrecognized mxl_read_index_init = \"%d\"\n", p->mxl_read_index_init);
             exit_status = AVERROR_BUG;
             goto finally;
         }
 
-        if (p->reset_on_drop) {
-            // presentation timestamp is mxl_start_grain_index relative
-            stream_ctx->flow.video.mxl_start_grain_index = stream_ctx->flow.video.mxl_grain_index;
+        // enforce strictly monotonic MXL grain index relative to last_pts
+        if (last_pts != AV_NOPTS_VALUE &&
+            stream_ctx->flow.video.mxl_grain_index <= last_pts) {
+
+            if (last_pts == INT64_MAX) {
+                loge(s, "sanity test failed: PTS overflow, "
+                     "cannot enforce grain index monotonicity\n");
+                exit_status = AVERROR_INVALIDDATA;
+                goto finally;
+            }
+
+            logv(s, "clamping video grain index from %"PRIu64" to %"PRId64
+                 " to enforce PTS monotonicity\n",
+                 stream_ctx->flow.video.mxl_grain_index, last_pts + 1);
+
+            stream_ctx->flow.video.mxl_grain_index = last_pts + 1;
         }
     }
 
-    // init the start grain index
-    if (0 == stream_ctx->flow.video.mxl_start_grain_index)
-        stream_ctx->flow.video.mxl_start_grain_index = stream_ctx->flow.video.mxl_grain_index;
-
     mxlGrainInfo grain_info = {0};
     uint8_t *mxl_payload = NULL;
-    mxlStatus mxl_status = MXL_ERR_UNKNOWN;
     diag_read_index = stream_ctx->flow.video.mxl_grain_index;
     if ((p->blocking == -1 && p->tuning.video_blocking_read) || p->blocking == 1) {
         logd(s, "blocking video frame read, grain index %"PRIu64"\n",
@@ -1386,16 +1402,20 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         memcpy(pkt->data, mxl_payload, grain_size);
     }
 
-    int64_t next_pts =
-        stream_ctx->flow.video.mxl_grain_index - stream_ctx->flow.video.mxl_start_grain_index;
+    // next FFmpeg PTS is the MXL grain index
+    if (stream_ctx->flow.video.mxl_grain_index > INT64_MAX) {
+        loge(s, "MXL video grain index exceeds INT64_MAX\n");
+        exit_status = AVERROR_INVALIDDATA;
+        goto finally;
+    }
+    int64_t next_pts = stream_ctx->flow.video.mxl_grain_index;
 
     // monotonic pts sanity check
     av_assert0(next_pts >= 0 &&
-               (stream_ctx->flow.video.last_pts == 0 ||
-                next_pts > stream_ctx->flow.video.last_pts));
+               (last_pts == AV_NOPTS_VALUE || next_pts > last_pts));
 
-    if (next_pts - stream_ctx->flow.video.last_pts > 1)
-        logi(s, "video pts jumped %d frames\n", next_pts - stream_ctx->flow.video.last_pts);
+    if (last_pts != AV_NOPTS_VALUE && next_pts - last_pts > 1)
+        logi(s, "video pts jumped %"PRId64" frames\n", next_pts - last_pts);
 
     stream_ctx->flow.video.last_pts = next_pts;
 
@@ -1406,9 +1426,8 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     pkt->stream_index = stream_ctx->stream_index;
     pkt->flags |= AV_PKT_FLAG_KEY;
 
-    logd(s, "good frame, grain_index=%"PRIu64", next_pts=%"PRId64
-         ", pkt->data=%p, mxl_payload=%p\n",
-         stream_ctx->flow.video.mxl_grain_index, next_pts, pkt->data, mxl_payload);
+    logd(s, "good frame, grain_index=%"PRIu64", pkt->data=%p, mxl_payload=%p\n",
+         stream_ctx->flow.video.mxl_grain_index, pkt->data, mxl_payload);
 
     // all good, advance the grain index
     stream_ctx->flow.video.mxl_grain_index++;
@@ -1571,10 +1590,15 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 {
     MXLContext  *p = s->priv_data;
 
-    int exit_status = AVERROR_UNKNOWN;
-
     uint64_t timestamp = mxlGetTime();
     uint64_t diag_read_index = 0;
+    const int64_t last_pts = stream_ctx->flow.audio.last_pts;
+    const int last_packet_duration = stream_ctx->flow.audio.last_packet_duration;
+
+    int exit_status = AVERROR_UNKNOWN;
+
+    mxlStatus mxl_status = MXL_ERR_UNKNOWN;
+    int samples_this_read = 0;
 
     logd(s, "read audio packet\n");
 
@@ -1599,12 +1623,12 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
     // init sample index
     if (0 == stream_ctx->flow.audio.mxl_sample_index) {
-        switch (p->grain_index_init) {
-        case GRAIN_INDEX_INIT_CURRENT: {
+        switch (p->mxl_read_index_init) {
+        case MXL_READ_INDEX_INIT_CURRENT: {
             uint64_t cur_sample_index =
                 mxlTimestampToIndex(&stream_ctx->flow.audio.mxl_sample_rate, timestamp);
             if (MXL_UNDEFINED_INDEX == cur_sample_index) {
-                loge(s, "mxlGetCurrentIndex error MXL_UNDEFINED_INDEX\n");
+                loge(s, "mxlTimestampToIndex return error MXL_UNDEFINED_INDEX\n");
                 exit_status = AVERROR_BUG;
                 goto finally;
             }
@@ -1613,12 +1637,12 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                  stream_ctx->flow.audio.mxl_sample_index);
             break;
         }
-        case GRAIN_INDEX_INIT_HEAD:
+        case MXL_READ_INDEX_INIT_HEAD:
             stream_ctx->flow.audio.mxl_sample_index = flow_info->runtime.headIndex;
             logv(s, "init audio sample index = %"PRIu64", policy: headIndex\n",
                  stream_ctx->flow.audio.mxl_sample_index);
             break;
-        case GRAIN_INDEX_INIT_TAIL: {
+        case MXL_READ_INDEX_INIT_TAIL: {
             // MXL limits readable audio ring buffer length to half
             // the buffer size. The tail calc must handle
             // max_audio_samples smaller than readableBufLen and, in
@@ -1643,22 +1667,31 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             break;
         }
         default:
-            loge(s, "unrecognized grain_index_init = \"%d\"\n", p->grain_index_init);
+            loge(s, "unrecognized mxl_read_index_init = \"%d\"\n", p->mxl_read_index_init);
             exit_status = AVERROR_BUG;
             goto finally;
         }
 
-        if (p->reset_on_drop) {
-            // presentation timestamp is mxl_start_grain_index relative
-            stream_ctx->flow.audio.mxl_start_sample_index = stream_ctx->flow.audio.mxl_sample_index;
+        // enforce strictly monotonic MXL sample index relative to last_pts
+        if (last_pts != AV_NOPTS_VALUE) {
+            if (last_packet_duration <= 0 || last_pts > INT64_MAX - last_packet_duration) {
+                loge(s, "sanity test failed: invalid last audio packet duration "
+                     "or PTS overflow, cannot enforce sample index monotonicity\n");
+                exit_status = AVERROR_INVALIDDATA;
+                goto finally;
+            }
+
+            const int64_t next_sample_index = last_pts + last_packet_duration;
+            if (stream_ctx->flow.audio.mxl_sample_index < next_sample_index) {
+                logv(s, "clamping audio sample index from %"PRIu64" to %"PRId64
+                     " to prevent overlapping audio packets\n",
+                     stream_ctx->flow.audio.mxl_sample_index, next_sample_index);
+                stream_ctx->flow.audio.mxl_sample_index = next_sample_index;
+            }
         }
     }
 
-    // init the start grain index
-    if (0 == stream_ctx->flow.audio.mxl_start_sample_index)
-        stream_ctx->flow.audio.mxl_start_sample_index = stream_ctx->flow.audio.mxl_sample_index;
-
-    int samples_this_read = max_samples_per_read;
+    samples_this_read = max_samples_per_read;
     if (p->max_audio_samples > 0) {
         samples_this_read = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
         if (samples_this_read > max_samples_per_read)
@@ -1671,7 +1704,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     diag_read_index = stream_ctx->flow.audio.mxl_sample_index;
     logd(s, "non-blocking audio read, %d samples at index %"PRIu64"\n",
          samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
-    mxlStatus mxl_status = mxlFlowReaderGetSamples(
+    mxl_status = mxlFlowReaderGetSamples(
         stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
         (size_t)samples_this_read, timeout_ns, &payload);
 
@@ -1686,7 +1719,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
 
         switch(p->on_too_late) {
         case ON_TOO_LATE_INCREMENT:
-            logv(s, "headIndex = %"PRIu64" vs sample_indx = %"PRIu64" diff = %d\n",
+            logv(s, "headIndex = %"PRIu64" vs sample_index = %"PRIu64" diff = %"PRIu64"\n",
                  flow_info->runtime.headIndex, stream_ctx->flow.audio.mxl_sample_index,
                  flow_info->runtime.headIndex - stream_ctx->flow.audio.mxl_sample_index);
             logv(s, "no audio samples, too late with sample index %"PRIu64
@@ -1754,27 +1787,37 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
 
-    int64_t next_pts =
-        stream_ctx->flow.audio.mxl_sample_index - stream_ctx->flow.audio.mxl_start_sample_index;
+    // next FFmpeg PTS is the MXL sample index
+    if (stream_ctx->flow.audio.mxl_sample_index > INT64_MAX) {
+        loge(s, "MXL audio sample index exceeds INT64_MAX\n");
+        exit_status = AVERROR_INVALIDDATA;
+        goto finally;
+    }
+    int64_t next_pts = stream_ctx->flow.audio.mxl_sample_index;
 
     // monotonic pts sanity check
     av_assert0(next_pts >= 0 &&
-               (stream_ctx->flow.audio.last_pts == 0 ||
-                next_pts > stream_ctx->flow.audio.last_pts));
+               (last_pts == AV_NOPTS_VALUE ||
+                (last_packet_duration > 0 &&
+                 last_pts <= INT64_MAX - last_packet_duration &&
+                 next_pts >= last_pts + last_packet_duration)));
 
-    if (next_pts - stream_ctx->flow.audio.last_pts > samples_this_read)
-        logi(s, "audio pts jumped %d samples\n", next_pts - stream_ctx->flow.audio.last_pts);
+    if (last_pts != AV_NOPTS_VALUE &&
+        next_pts - last_pts > last_packet_duration) {
+        logi(s, "audio pts jumped %"PRId64" samples\n", next_pts - last_pts);
+    }
 
     stream_ctx->flow.audio.last_pts = next_pts;
+    stream_ctx->flow.audio.last_packet_duration = samples_this_read;
 
     pkt->pts      = next_pts;
     pkt->dts      = next_pts;
     pkt->duration = samples_this_read;
     pkt->stream_index = stream_ctx->stream_index;
 
-    logd(s, "good audio block, sample_index=%"PRIu64", next_pts=%"PRId64
-         ", samples_this_read = %d, pkt->data=%p mxl_payload_0=%p, mxl_payload_1=%p\n",
-         stream_ctx->flow.audio.mxl_sample_index, next_pts, samples_this_read, pkt->data,
+    logd(s, "good audio block, sample_index=%"PRIu64
+             ", samples_this_read = %d, pkt->data=%p mxl_payload_0=%p, mxl_payload_1=%p\n",
+         stream_ctx->flow.audio.mxl_sample_index, samples_this_read, pkt->data,
          payload.base.fragments[0].pointer,
          payload.base.fragments[1].size > 0 ? payload.base.fragments[1].pointer : NULL);
 

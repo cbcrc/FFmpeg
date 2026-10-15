@@ -42,7 +42,7 @@ FILTER_MXL_LOG_PREFIX = sed -E "s/(\[mxl @ 0x)[[:xdigit:]]+(\])/\1ADDR\2/g"
 PROBE_LOG_FILTER = $(FILTER_PWD_FROM_MXL_URI) | $(FILTER_MXL_LOG_PREFIX) | \
                    grep -E "^\[mxl @ 0xADDR\]|: Invalid argument$$|: Input/output error$$"
 
-# Usage: $(call MXL_MUX_DEMUX_TEST,<test-dir-name>,<mux-command>,<demux-command>,<failure-label>)
+# Usage: $(call MXL_MUX_DEMUX_TEST,<test-dir-name>,<mux-command>,<demux-command>,<failure-label>,<output-filter>)
 #
 # Run an MXL test in an isolated per-test temporary directory.
 #
@@ -54,7 +54,8 @@ PROBE_LOG_FILTER = $(FILTER_PWD_FROM_MXL_URI) | $(FILTER_MXL_LOG_PREFIX) | \
 # It then retries the supplied `demux-command` until it succeeds or
 # the retry limit is reached. On success it touches the local
 # ./sentinel file so the `mux-command` can perform synchronized
-# teardown. The macro waits for the muxer to exit before completing.
+# teardown. An optional `output-filter` is applied to successful demux
+# output. The macro waits for the muxer to exit before completing.
 #
 define MXL_MUX_DEMUX_TEST
     ( \
@@ -77,6 +78,12 @@ define MXL_MUX_DEMUX_TEST
             OUTFILE=$$(mktemp "$$TEST_DIR"/demux.out.XXXXXX) || exit 1; \
             $(3) > "$$OUTFILE" 2>&1; \
             STATUS=$$?; \
+            $(if $(strip $(5)), \
+                if [ $$STATUS -eq 0 ]; then \
+                    $(5) < "$$OUTFILE" > "$$OUTFILE.filtered" || exit 1; \
+                    mv "$$OUTFILE.filtered" "$$OUTFILE" || exit 1; \
+                fi; \
+            ) \
             $(FILTER_PWD_FROM_MXL_URI) < "$$OUTFILE"; \
             rm -f "$$OUTFILE"; \
             if [ $$STATUS -eq 0 ]; then \
@@ -109,7 +116,7 @@ fate-mxl-video-encdec: CMD = \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
             domain, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
-            -f mxl -max_video_frames 5 -grain_index_init 2 \
+            -f mxl -max_video_frames 5 -mxl_read_index_init tail \
             -i domain/$(MXL_VIDEO_FLOW_ID).mxl-flow \
             -bitexact -f framemd5 pipe:1, \
         demuxer)
@@ -128,7 +135,7 @@ fate-mxl-audio-encdec: CMD = \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
             domain, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
-            -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -grain_index_init 2 \
+            -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -mxl_read_index_init tail \
             -i domain/$(MXL_AUDIO_FLOW_ID).mxl-flow \
             -bitexact -f framemd5 pipe:1, \
         demuxer)
@@ -151,10 +158,11 @@ fate-mxl-av-encdec: CMD = \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
             -f mxl -max_video_frames 5 \
             -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) \
-            -grain_index_init 2 \
+            -mxl_read_index_init tail \
             -i "mxl://$$(pwd)/domain?id=$(MXL_VIDEO_FLOW_ID)&id=$(MXL_AUDIO_FLOW_ID)" \
             -bitexact -f framemd5 pipe:1, \
-        demuxer)
+        demuxer, \
+	$(abspath $(SRC_PATH)/tests/fate/mxl_normalize_framemd5.py))
 fate-mxl-av-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-av-encdec
 FATE-yes += \
     $(if $(filter yes,$(CONFIG_MXL_DEMUXER)), \
