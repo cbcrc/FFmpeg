@@ -20,6 +20,12 @@ FATEH = 34
 
 FFMPEG=ffmpeg$(PROGSSUF)$(EXESUF)
 
+ifeq ($(CONFIG_LIBMXL),yes)
+tests/mxl_test_source$(EXESUF): tests/mxl_test_source.o
+	$(LD) $(LDFLAGS) $(LDEXEFLAGS) $(LD_O) $^ \
+	    $(EXTRALIBS-avformat) -lm
+endif
+
 $(AREF): CMP=
 
 APITESTSDIR := tests/api
@@ -359,6 +365,7 @@ testclean::
 	$(RM) $(CLEANSUFFIXES:%=tests/%)
 	$(RM) $(TESTTOOLS:%=tests/%$(HOSTEXESUF))
 	$(RM) tests/pixfmts.mak tests/test_copy.ffmeta
+	$(RM) tests/mxl_test_source$(EXESUF)
 
 -include $(wildcard tests/*.d)
 
