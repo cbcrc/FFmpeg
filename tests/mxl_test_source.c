@@ -2,8 +2,8 @@
  * Minimal MXL test source for FFmpeg regression tests.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Phase 2: paced, zero-filled video and audio at absolute MXL indices.
- * Disruption simulation is reserved for Phase 3.
+ * Phase 3: paced, zero-filled audio/video with independent random gaps
+ * and bounded catch-up on the original absolute media timeline.
  */
 
 #include <errno.h>
@@ -90,12 +90,17 @@ typedef struct TestSignal {
 typedef struct VideoSink {
     mxlFlowWriter writer;
     uint64_t next_index;
+    uint64_t written;
+    uint64_t skipped;
 } VideoSink;
 
 typedef struct AudioSink {
     mxlFlowWriter writer;
     uint64_t next_index;
+    uint64_t next_frame;
     size_t max_write_samples;
+    uint64_t written;
+    uint64_t skipped;
 } AudioSink;
 
 typedef struct MXLTestSource {
@@ -108,6 +113,17 @@ typedef struct MediaClock {
     struct timespec start;
     double speed;
 } MediaClock;
+
+typedef struct GapSchedule {
+    const char *name;
+    uint64_t rng;
+    double interval_mean;
+    double duration_mean;
+    double next_start;
+    double active_end;
+    uint64_t count;
+    int active;
+} GapSchedule;
 
 static int parse_uint64(const char *text, uint64_t *value)
 {
@@ -346,6 +362,7 @@ static int write_video(VideoSink *sink, const TestSignal *signal)
     }
     opened = 0;
     sink->next_index++;
+    sink->written++;
     failed = 0;
 
 finally:
@@ -390,6 +407,7 @@ static int write_audio(AudioSink *sink, const TestSignal *signal,
         }
         opened = 0;
         sink->next_index += count;
+        sink->written += count;
         failed = 0;
 
 finally:
@@ -402,22 +420,6 @@ finally:
         if (failed)
             return -1;
     }
-    return 0;
-}
-
-static int write_av_frame(MXLTestSource *source, const TestSignal *signal)
-{
-    uint64_t audio_end;
-
-    if (source->video.next_index == UINT64_MAX ||
-        video_to_audio_index(source->video.next_index + 1, &audio_end) ||
-        audio_end < source->audio.next_index) {
-        fprintf(stderr, "mxl_test_source: media index overflow\n");
-        return -1;
-    }
-    if (write_video(&source->video, signal) ||
-        write_audio(&source->audio, signal, audio_end))
-        return -1;
     return 0;
 }
 
@@ -466,35 +468,252 @@ static int wait_for_media_time(const MediaClock *clock, double media_seconds,
     }
 }
 
+static int current_media_time(const MediaClock *clock, double *seconds)
+{
+    struct timespec now;
+    double elapsed;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now)) {
+        perror("mxl_test_source: clock_gettime");
+        return -1;
+    }
+    elapsed = (double)(now.tv_sec - clock->start.tv_sec) +
+              (double)(now.tv_nsec - clock->start.tv_nsec) / 1e9;
+    *seconds = elapsed * clock->speed;
+    if (*seconds < 0 || !isfinite(*seconds)) {
+        fprintf(stderr, "mxl_test_source: invalid media clock\n");
+        return -1;
+    }
+    return 0;
+}
+
+static double frame_time(uint64_t frame)
+{
+    return (double)frame * VIDEO_RATE_DEN / VIDEO_RATE_NUM;
+}
+
+/* Saturating conversion: a 60000/1001 frame occupies 1001/60 ms. */
+static uint64_t frames_per_ms(uint64_t milliseconds, unsigned numerator)
+{
+    uint64_t whole = milliseconds / 1001;
+    uint64_t fraction = (milliseconds % 1001) * numerator / 1001;
+
+    if (whole > (UINT64_MAX - fraction) / numerator)
+        return UINT64_MAX;
+    return whole * numerator + fraction;
+}
+
+static uint64_t random_u64(uint64_t *state)
+{
+    uint64_t x = *state;
+
+    x ^= x >> 12;
+    x ^= x << 25;
+    x ^= x >> 27;
+    *state = x;
+    return x * UINT64_C(2685821657736338717);
+}
+
+static double random_exponential(uint64_t *state, double mean)
+{
+    /* A uniform value strictly inside (0,1) avoids log(0). */
+    double u = (double)(random_u64(state) >> 11) * 0x1p-53 + 0x1p-54;
+    return -mean * log(u);
+}
+
+static void init_gap(GapSchedule *gap, const char *name, uint64_t seed,
+                     double rate_per_minute, double mean_duration_ms)
+{
+    memset(gap, 0, sizeof(*gap));
+    gap->name = name;
+    gap->rng = seed;
+    gap->next_start = INFINITY;
+
+    if (rate_per_minute > 0 && mean_duration_ms > 0) {
+        gap->interval_mean = 60.0 / rate_per_minute;
+        gap->duration_mean = mean_duration_ms / 1000.0;
+        gap->next_start = random_exponential(&gap->rng, gap->interval_mean);
+    }
+}
+
+static void update_gap(GapSchedule *gap, double now)
+{
+    while (gap->next_start <= now) {
+        double start = gap->next_start;
+        double length = random_exponential(&gap->rng, gap->duration_mean);
+        double end = start + length;
+        double next = start + random_exponential(&gap->rng, gap->interval_mean);
+
+        if (end > gap->active_end)
+            gap->active_end = end;
+        gap->next_start = next > start ? next : nextafter(start, INFINITY);
+        gap->count++;
+        fprintf(stderr, "mxl_test_source: %s gap at %.3f s for %.1f ms\n",
+                gap->name, start, length * 1000.0);
+    }
+
+    if (gap->active != (now < gap->active_end)) {
+        gap->active = now < gap->active_end;
+        if (!gap->active)
+            fprintf(stderr, "mxl_test_source: %s resumed at %.3f s\n",
+                    gap->name, now);
+    }
+}
+
+static uint64_t min_u64(uint64_t a, uint64_t b)
+{
+    return a < b ? a : b;
+}
+
+static double min_double(double a, double b)
+{
+    return a < b ? a : b;
+}
+
+static int catch_up(MXLTestSource *source, const TestOptions *opts,
+                    uint64_t due_frame, uint64_t video_limit,
+                    uint64_t audio_limit, int video_active, int audio_active)
+{
+    if (video_active) {
+        uint64_t first = due_frame > video_limit ? due_frame - video_limit : 0;
+        uint64_t next = source->video.next_index - opts->start_index;
+
+        if (next < first) {
+            uint64_t count = first - next;
+            fprintf(stderr, "mxl_test_source: video skip %" PRIu64
+                    " grains (%" PRIu64 " -> %" PRIu64 ")\n",
+                    count, source->video.next_index, opts->start_index + first);
+            source->video.skipped += count;
+            source->video.next_index = opts->start_index + first;
+        }
+    }
+
+    if (audio_active) {
+        uint64_t first = due_frame > audio_limit ? due_frame - audio_limit : 0;
+
+        if (source->audio.next_frame < first) {
+            uint64_t new_index;
+            uint64_t count;
+
+            if (video_to_audio_index(opts->start_index + first, &new_index) ||
+                new_index < source->audio.next_index)
+                return -1;
+            count = new_index - source->audio.next_index;
+            fprintf(stderr, "mxl_test_source: audio skip %" PRIu64
+                    " samples (frame %" PRIu64 " -> %" PRIu64 ")\n",
+                    count, source->audio.next_frame, first);
+            source->audio.skipped += count;
+            source->audio.next_index = new_index;
+            source->audio.next_frame = first;
+        }
+    }
+    return 0;
+}
+
+static int write_audio_frame(AudioSink *sink, const TestSignal *signal,
+                             uint64_t start_index)
+{
+    uint64_t end;
+
+    if (start_index == UINT64_MAX ||
+        sink->next_frame >= UINT64_MAX - start_index - 1 ||
+        video_to_audio_index(start_index + sink->next_frame + 1, &end) ||
+        end < sink->next_index) {
+        fprintf(stderr, "mxl_test_source: audio index overflow\n");
+        return -1;
+    }
+    if (write_audio(sink, signal, end))
+        return -1;
+    sink->next_frame++;
+    return 0;
+}
+
 static int generate_media(MXLTestSource *source, const TestOptions *opts,
                           const sigset_t *stop_signals)
 {
     const TestSignal signal = { SIGNAL_ZERO };
     MediaClock clock;
-    uint64_t frames = 0;
-    uint64_t first_audio = source->audio.next_index;
+    GapSchedule video_gap, audio_gap;
+    uint64_t video_capacity = frames_per_ms(opts->history_duration, 60);
+    uint64_t video_limit = min_u64(frames_per_ms(opts->catchup_limit, 60),
+                                   video_capacity ? video_capacity - 1 : 0);
+    uint64_t audio_limit = min_u64(frames_per_ms(opts->catchup_limit, 60),
+                                   frames_per_ms(opts->history_duration, 30));
     int result;
 
+    init_gap(&video_gap, "video", UINT64_C(0x2a63d5ad973e8847),
+             opts->video_gap_rate, opts->video_gap_mean);
+    init_gap(&audio_gap, "audio", UINT64_C(0xb5491b926add1143),
+             opts->audio_gap_rate, opts->audio_gap_mean);
     if (start_clock(&clock, opts->speed))
         return -1;
 
     for (;;) {
-        double media_seconds = (double)frames * VIDEO_RATE_DEN / VIDEO_RATE_NUM;
-        if (media_seconds >= opts->duration)
-            break;
+        double now, next_event;
+        uint64_t due_frame;
+        int wrote = 0;
 
-        result = wait_for_media_time(&clock, media_seconds, stop_signals);
+        if (current_media_time(&clock, &now))
+            return -1;
+        if (now >= opts->duration)
+            break;
+        if (now * VIDEO_RATE_NUM / VIDEO_RATE_DEN >=
+            (double)(UINT64_MAX - opts->start_index - 1)) {
+            fprintf(stderr, "mxl_test_source: media index overflow\n");
+            return -1;
+        }
+        due_frame = (uint64_t)(now * VIDEO_RATE_NUM / VIDEO_RATE_DEN);
+
+        update_gap(&video_gap, now);
+        update_gap(&audio_gap, now);
+        if (catch_up(source, opts, due_frame, video_limit, audio_limit,
+                     !video_gap.active, !audio_gap.active))
+            return -1;
+
+        /* Poll even while draining a catch-up backlog. */
+        result = wait_for_media_time(&clock, now, stop_signals);
         if (result < 0)
             return -1;
         if (result > 0)
             break;
-        if (write_av_frame(source, &signal))
+
+        if (!video_gap.active &&
+            source->video.next_index - opts->start_index <= due_frame) {
+            if (source->video.next_index == UINT64_MAX ||
+                write_video(&source->video, &signal))
+                return -1;
+            wrote = 1;
+        }
+        if (!audio_gap.active && source->audio.next_frame <= due_frame) {
+            if (write_audio_frame(&source->audio, &signal, opts->start_index))
+                return -1;
+            wrote = 1;
+        }
+        if (wrote)
+            continue;
+
+        next_event = opts->duration;
+        next_event = min_double(next_event, video_gap.next_start);
+        next_event = min_double(next_event, audio_gap.next_start);
+        next_event = min_double(next_event, video_gap.active ?
+                                video_gap.active_end :
+                                frame_time(source->video.next_index - opts->start_index));
+        next_event = min_double(next_event, audio_gap.active ?
+                                audio_gap.active_end : frame_time(source->audio.next_frame));
+
+        result = wait_for_media_time(&clock, next_event, stop_signals);
+        if (result < 0)
             return -1;
-        frames++;
+        if (result > 0)
+            break;
     }
 
     fprintf(stderr, "mxl_test_source: wrote %" PRIu64 " video grains and %" PRIu64
-            " audio samples\n", frames, source->audio.next_index - first_audio);
+            " audio samples; skipped %" PRIu64 " video grains and %" PRIu64
+            " audio samples; gaps %" PRIu64 " video, %" PRIu64 " audio\n",
+            source->video.written, source->audio.written,
+            source->video.skipped, source->audio.skipped,
+            video_gap.count, audio_gap.count);
     return 0;
 }
 
