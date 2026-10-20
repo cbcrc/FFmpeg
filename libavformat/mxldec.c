@@ -111,7 +111,7 @@ typedef struct StreamContext {
 
 typedef struct MXLTuningParams {
     int audio_samples_per_read;
-    bool video_blocking_read;
+    bool blocking_read;
 } MXLTuningParams;
 
 typedef struct MXLContext {
@@ -154,6 +154,11 @@ typedef struct MXLContext {
     mxl_dump_audio_writer* audio_dump_writer;
 } MXLContext;
 
+static bool use_blocking_read(const MXLContext *p)
+{
+    return p->blocking == 1 || (p->blocking == -1 && p->tuning.blocking_read);
+}
+
 #define OFFSET(x) offsetof(MXLContext, x)
 #define FLAGS AV_OPT_FLAG_DECODING_PARAM
 
@@ -170,7 +175,7 @@ static const AVOption mxl_options[] = {
     },
     {
         .name = "blocking",
-        .help = "Use blocking video read: auto (default), 0=non-blocking, 1=blocking" ,
+        .help = "Use blocking audio/video reads: auto (default), 0=non-blocking, 1=blocking" ,
         .offset = OFFSET(blocking),
         .type = AV_OPT_TYPE_INT,
         .default_val = { .i64 = -1 },
@@ -935,7 +940,7 @@ finally:
  * Examine the configured flows and compute tuning parameters to
  * optimize FFmpeg's streaming performance.
  * 1. audio samples per read set to one video frame, or 1/60s
- * 2. video blocking read set to false if both audio and video flows exit
+ * 2. blocking read set to false if both audio and video flows exist
  */
 static void header_init_tuning_params(AVFormatContext *s)
 {
@@ -988,10 +993,10 @@ static void header_init_tuning_params(AVFormatContext *s)
     }
 
     p->tuning.audio_samples_per_read = audio_samples_per_frame;
-    p->tuning.video_blocking_read = !(ast && vst);
+    p->tuning.blocking_read = !(ast && vst);
 
     logv(s, "tuned audio_samples_per_read = %d\n", p->tuning.audio_samples_per_read);
-    logv(s, "tuned video_blocking_read = %d\n", p->tuning.video_blocking_read);
+    logv(s, "tuned blocking_read = %d\n", p->tuning.blocking_read);
 }
 
 static void release_stream_context(AVFormatContext *s,
@@ -1307,7 +1312,7 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
     mxlGrainInfo grain_info = {0};
     uint8_t *mxl_payload = NULL;
     diag_read_index = stream_ctx->flow.video.mxl_grain_index;
-    if ((p->blocking == -1 && p->tuning.video_blocking_read) || p->blocking == 1) {
+    if (use_blocking_read(p)) {
         logd(s, "blocking video frame read, grain index %"PRIu64"\n",
              stream_ctx->flow.video.mxl_grain_index);
         const AVRational ns_time_base = {1, 1000000000};
@@ -1360,7 +1365,7 @@ static int read_video_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
     else if (MXL_STATUS_OK != mxl_status) {
-        logv(s, "mxlFlowReaderGetGrain error %s (%d)\n",
+        logv(s, "MXL video read error %s (%d)\n",
              mxl_status_to_str(mxl_status), mxl_status);
         exit_status = AVERROR(EIO);
         goto finally;
@@ -1698,15 +1703,24 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             samples_this_read = max_samples_per_read;
     }
 
-    const AVRational ns_time_base = {1, 1000000000};
-    uint64_t timeout_ns = (uint64_t)av_rescale_q(max_samples_per_read, st->time_base, ns_time_base);
     mxlWrappedMultiBufferSlice payload = {0};
     diag_read_index = stream_ctx->flow.audio.mxl_sample_index;
-    logd(s, "non-blocking audio read, %d samples at index %"PRIu64"\n",
-         samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
-    mxl_status = mxlFlowReaderGetSamples(
-        stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
-        (size_t)samples_this_read, timeout_ns, &payload);
+    if (use_blocking_read(p)) {
+        logd(s, "blocking audio read, %d samples at index %"PRIu64"\n",
+             samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
+        const AVRational ns_time_base = {1, 1000000000};
+        uint64_t timeout_ns = (uint64_t)av_rescale_q(max_samples_per_read, st->time_base, ns_time_base);
+        mxl_status = mxlFlowReaderGetSamples(
+            stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
+            (size_t)samples_this_read, timeout_ns, &payload);
+    }
+    else {
+        logd(s, "non-blocking audio read, %d samples at index %"PRIu64"\n",
+             samples_this_read, stream_ctx->flow.audio.mxl_sample_index);
+        mxl_status = mxlFlowReaderGetSamplesNonBlocking(
+            stream_ctx->mxl_flow_reader, stream_ctx->flow.audio.mxl_sample_index,
+            (size_t)samples_this_read, &payload);
+    }
 
     if (MXL_ERR_OUT_OF_RANGE_TOO_LATE == mxl_status) {
 
@@ -1754,7 +1768,7 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
     else if (MXL_STATUS_OK != mxl_status) {
-        logv(s, "mxlFlowReaderGetSamples error %s (%d)\n",
+        logv(s, "MXL audio read error %s (%d)\n",
              mxl_status_to_str(mxl_status), mxl_status);
         exit_status = AVERROR(EIO);
         goto finally;
