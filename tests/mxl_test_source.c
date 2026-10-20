@@ -2,8 +2,8 @@
  * Minimal MXL test source for FFmpeg regression tests.
  * SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Phase 3: paced, zero-filled audio/video with independent random gaps
- * and bounded catch-up on the original absolute media timeline.
+ * Paced, zero-filled audio/video with independent scheduled startup gaps
+ * and random transient gaps on the original absolute media timeline.
  */
 
 #include <errno.h>
@@ -79,6 +79,10 @@ typedef struct TestOptions {
     double video_gap_mean;
     double audio_gap_rate;
     double audio_gap_mean;
+    uint64_t video_gap_start;
+    uint64_t video_gap_duration;
+    uint64_t audio_gap_start;
+    uint64_t audio_gap_duration;
 } TestOptions;
 
 typedef enum SignalType {
@@ -122,6 +126,14 @@ typedef struct MediaClock {
     struct timespec start;
     double speed;
 } MediaClock;
+
+typedef struct StartupGap {
+    const char *name;
+    double start;
+    double end;
+    int active;
+    int complete;
+} StartupGap;
 
 typedef struct GapSchedule {
     const char *name;
@@ -172,10 +184,12 @@ static void usage(const char* exename) {
     fprintf(stderr,
         "Usage: %s domain_dir start_index duration speed history_duration "
         "catchup_limit signal video_gap_rate video_gap_mean "
-        "audio_gap_rate audio_gap_mean\n"
+        "audio_gap_rate audio_gap_mean "
+        "video_gap_start video_gap_duration "
+        "audio_gap_start audio_gap_duration\n"
         "\n"
         "  domain_dir        MXL domain directory\n"
-        "  start_index       Initial absolute video grain index\n"
+        "  start_index       Initial absolute media timeline index (video grain units)\n"
         "  duration          Media duration in seconds (0 = indefinite)\n"
         "  speed             Media clock speed relative to real time (1.0 = normal)\n"
         "  history_duration  MXL ring-buffer history in milliseconds\n"
@@ -184,13 +198,17 @@ static void usage(const char* exename) {
         "  video_gap_rate    Mean number of video interruptions per minute (0 = none)\n"
         "  video_gap_mean    Mean video interruption duration in milliseconds\n"
         "  audio_gap_rate    Mean number of audio interruptions per minute (0 = none)\n"
-        "  audio_gap_mean    Mean audio interruption duration in milliseconds\n",
+        "  audio_gap_mean    Mean audio interruption duration in milliseconds\n"
+        "  video_gap_start   Scheduled video interruption start in milliseconds\n"
+        "  video_gap_duration Scheduled video interruption duration in milliseconds\n"
+        "  audio_gap_start   Scheduled audio interruption start in milliseconds\n"
+        "  audio_gap_duration Scheduled audio interruption duration in milliseconds\n",
         exename);
 }
 
 static int parse_options(int argc, char **argv, TestOptions *opts)
 {
-    if (argc != 12) {
+    if (argc != 16) {
         usage(argv[0]);
         return -1;
     }
@@ -210,6 +228,10 @@ static int parse_options(int argc, char **argv, TestOptions *opts)
         parse_double(argv[9], &opts->video_gap_mean) ||
         parse_double(argv[10], &opts->audio_gap_rate) ||
         parse_double(argv[11], &opts->audio_gap_mean) ||
+        parse_uint64(argv[12], &opts->video_gap_start) ||
+        parse_uint64(argv[13], &opts->video_gap_duration) ||
+        parse_uint64(argv[14], &opts->audio_gap_start) ||
+        parse_uint64(argv[15], &opts->audio_gap_duration) ||
         opts->duration < 0 || opts->speed <= 0 ||
         opts->history_duration == 0 ||
         opts->history_duration > UINT64_MAX / NS_PER_MS ||
@@ -566,8 +588,47 @@ static double random_exponential(uint64_t *state, double mean)
     return -mean * log(u);
 }
 
+static void init_startup(StartupGap *gap, const char *name,
+                         uint64_t start_ms, uint64_t duration_ms)
+{
+    memset(gap, 0, sizeof(*gap));
+    gap->name = name;
+    gap->start = (double)start_ms / 1000.0;
+    gap->end = gap->start + (double)duration_ms / 1000.0;
+    gap->complete = duration_ms == 0;
+}
+
+/* Return 1 when the flow completes startup. */
+static int update_startup(StartupGap *gap, double now)
+{
+    if (gap->complete)
+        return 0;
+
+    if (!gap->active && now >= gap->start) {
+        gap->active = 1;
+        fprintf(stderr, "mxl_test_source: %s startup gap at %.3f s for %.1f ms\n",
+                gap->name, gap->start, (gap->end - gap->start) * 1000.0);
+    }
+    if (gap->active && now >= gap->end) {
+        gap->active = 0;
+        gap->complete = 1;
+        fprintf(stderr, "mxl_test_source: %s startup resumed at %.3f s\n",
+                gap->name, now);
+        return 1;
+    }
+    return 0;
+}
+
+static double next_startup_event(const StartupGap *gap)
+{
+    if (gap->complete)
+        return INFINITY;
+    return gap->active ? gap->end : gap->start;
+}
+
 static void init_gap(GapSchedule *gap, const char *name, uint64_t seed,
-                     double rate_per_minute, double mean_duration_ms)
+                     double rate_per_minute, double mean_duration_ms,
+                     double start_time)
 {
     memset(gap, 0, sizeof(*gap));
     gap->name = name;
@@ -577,7 +638,7 @@ static void init_gap(GapSchedule *gap, const char *name, uint64_t seed,
     if (rate_per_minute > 0 && mean_duration_ms > 0) {
         gap->interval_mean = 60.0 / rate_per_minute;
         gap->duration_mean = mean_duration_ms / 1000.0;
-        gap->next_start = random_exponential(&gap->rng, gap->interval_mean);
+        gap->next_start = start_time + random_exponential(&gap->rng, gap->interval_mean);
     }
 }
 
@@ -615,42 +676,81 @@ static double min_double(double a, double b)
     return a < b ? a : b;
 }
 
+static void skip_video(VideoSink *sink, uint64_t start_index,
+                       uint64_t first, const char *reason)
+{
+    uint64_t next = sink->next_index - start_index;
+
+    if (next < first) {
+        uint64_t count = first - next;
+        fprintf(stderr, "mxl_test_source: video %sskip %" PRIu64
+                " grains (%" PRIu64 " -> %" PRIu64 ")\n",
+                reason, count, sink->next_index, start_index + first);
+        sink->skipped += count;
+        sink->next_index = start_index + first;
+    }
+}
+
+static int skip_audio(AudioSink *sink, uint64_t start_index,
+                      uint64_t first, const char *reason)
+{
+    if (sink->next_frame < first) {
+        uint64_t new_index;
+        uint64_t count;
+
+        if (video_to_audio_index(start_index + first, &new_index) ||
+            new_index < sink->next_index)
+            return -1;
+        count = new_index - sink->next_index;
+        fprintf(stderr, "mxl_test_source: audio %sskip %" PRIu64
+                " samples (frame %" PRIu64 " -> %" PRIu64 ")\n",
+                reason, count, sink->next_frame, first);
+        sink->skipped += count;
+        sink->next_index = new_index;
+        sink->next_frame = first;
+    }
+    return 0;
+}
+
+static int update_video_startup(VideoSink *sink, const TestOptions *opts,
+                                StartupGap *startup, GapSchedule *gap,
+                                uint64_t due_frame, double now)
+{
+    if (!update_startup(startup, now))
+        return 0;
+
+    skip_video(sink, opts->start_index, due_frame, "startup ");
+    init_gap(gap, "video", UINT64_C(0x2a63d5ad973e8847),
+             opts->video_gap_rate, opts->video_gap_mean, startup->end);
+    return 0;
+}
+
+static int update_audio_startup(AudioSink *sink, const TestOptions *opts,
+                                StartupGap *startup, GapSchedule *gap,
+                                uint64_t due_frame, double now)
+{
+    if (!update_startup(startup, now))
+        return 0;
+
+    if (skip_audio(sink, opts->start_index, due_frame, "startup "))
+        return -1;
+    init_gap(gap, "audio", UINT64_C(0xb5491b926add1143),
+             opts->audio_gap_rate, opts->audio_gap_mean, startup->end);
+    return 0;
+}
+
 static int catch_up(MXLTestSource *source, const TestOptions *opts,
                     uint64_t due_frame, uint64_t video_limit,
                     uint64_t audio_limit, int video_active, int audio_active)
 {
     if (video_active) {
         uint64_t first = due_frame > video_limit ? due_frame - video_limit : 0;
-        uint64_t next = source->video.next_index - opts->start_index;
-
-        if (next < first) {
-            uint64_t count = first - next;
-            fprintf(stderr, "mxl_test_source: video skip %" PRIu64
-                    " grains (%" PRIu64 " -> %" PRIu64 ")\n",
-                    count, source->video.next_index, opts->start_index + first);
-            source->video.skipped += count;
-            source->video.next_index = opts->start_index + first;
-        }
+        skip_video(&source->video, opts->start_index, first, "");
     }
-
     if (audio_active) {
         uint64_t first = due_frame > audio_limit ? due_frame - audio_limit : 0;
-
-        if (source->audio.next_frame < first) {
-            uint64_t new_index;
-            uint64_t count;
-
-            if (video_to_audio_index(opts->start_index + first, &new_index) ||
-                new_index < source->audio.next_index)
-                return -1;
-            count = new_index - source->audio.next_index;
-            fprintf(stderr, "mxl_test_source: audio skip %" PRIu64
-                    " samples (frame %" PRIu64 " -> %" PRIu64 ")\n",
-                    count, source->audio.next_frame, first);
-            source->audio.skipped += count;
-            source->audio.next_index = new_index;
-            source->audio.next_frame = first;
-        }
+        if (skip_audio(&source->audio, opts->start_index, first, ""))
+            return -1;
     }
     return 0;
 }
@@ -678,7 +778,8 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
 {
     const TestSignal signal = { SIGNAL_ZERO };
     MediaClock clock;
-    GapSchedule video_gap, audio_gap;
+    StartupGap video_startup, audio_startup;
+    GapSchedule video_gap = {0}, audio_gap = {0};
     uint64_t video_capacity = frames_per_ms(opts->history_duration, 60);
     uint64_t video_limit = min_u64(frames_per_ms(opts->catchup_limit, 60),
                                    video_capacity ? video_capacity - 1 : 0);
@@ -686,10 +787,18 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
                                    frames_per_ms(opts->history_duration, 30));
     int result;
 
-    init_gap(&video_gap, "video", UINT64_C(0x2a63d5ad973e8847),
-             opts->video_gap_rate, opts->video_gap_mean);
-    init_gap(&audio_gap, "audio", UINT64_C(0xb5491b926add1143),
-             opts->audio_gap_rate, opts->audio_gap_mean);
+    init_startup(&video_startup, "video", opts->video_gap_start,
+                 opts->video_gap_duration);
+    init_startup(&audio_startup, "audio", opts->audio_gap_start,
+                 opts->audio_gap_duration);
+    video_gap.next_start = INFINITY;
+    audio_gap.next_start = INFINITY;
+    if (video_startup.complete)
+        init_gap(&video_gap, "video", UINT64_C(0x2a63d5ad973e8847),
+                 opts->video_gap_rate, opts->video_gap_mean, 0);
+    if (audio_startup.complete)
+        init_gap(&audio_gap, "audio", UINT64_C(0xb5491b926add1143),
+                 opts->audio_gap_rate, opts->audio_gap_mean, 0);
     if (start_clock(&clock, opts->speed))
         return -1;
 
@@ -709,10 +818,18 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
         }
         due_frame = (uint64_t)(now * VIDEO_RATE_NUM / VIDEO_RATE_DEN);
 
-        update_gap(&video_gap, now);
-        update_gap(&audio_gap, now);
+        if (update_video_startup(&source->video, opts, &video_startup,
+                                 &video_gap, due_frame, now) ||
+            update_audio_startup(&source->audio, opts, &audio_startup,
+                                 &audio_gap, due_frame, now))
+            return -1;
+        if (video_startup.complete)
+            update_gap(&video_gap, now);
+        if (audio_startup.complete)
+            update_gap(&audio_gap, now);
         if (catch_up(source, opts, due_frame, video_limit, audio_limit,
-                     !video_gap.active, !audio_gap.active))
+                     video_startup.complete && !video_gap.active,
+                     audio_startup.complete && !audio_gap.active))
             return -1;
 
         /* Poll even while draining a catch-up backlog. */
@@ -722,14 +839,15 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
         if (result > 0)
             break;
 
-        if (!video_gap.active &&
+        if (!video_startup.active && !video_gap.active &&
             source->video.next_index - opts->start_index <= due_frame) {
             if (source->video.next_index == UINT64_MAX ||
                 write_video(&source->video, &signal))
                 return -1;
             wrote = 1;
         }
-        if (!audio_gap.active && source->audio.next_frame <= due_frame) {
+        if (!audio_startup.active && !audio_gap.active &&
+            source->audio.next_frame <= due_frame) {
             if (write_audio_frame(&source->audio, &signal, opts->start_index))
                 return -1;
             wrote = 1;
@@ -738,13 +856,17 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
             continue;
 
         next_event = opts->duration > 0 ? opts->duration : INFINITY;
+        next_event = min_double(next_event, next_startup_event(&video_startup));
+        next_event = min_double(next_event, next_startup_event(&audio_startup));
         next_event = min_double(next_event, video_gap.next_start);
         next_event = min_double(next_event, audio_gap.next_start);
-        next_event = min_double(next_event, video_gap.active ?
-                                video_gap.active_end :
-                                frame_time(source->video.next_index - opts->start_index));
-        next_event = min_double(next_event, audio_gap.active ?
-                                audio_gap.active_end : frame_time(source->audio.next_frame));
+        if (!video_startup.active)
+            next_event = min_double(next_event, video_gap.active ?
+                                    video_gap.active_end :
+                                    frame_time(source->video.next_index - opts->start_index));
+        if (!audio_startup.active)
+            next_event = min_double(next_event, audio_gap.active ?
+                                    audio_gap.active_end : frame_time(source->audio.next_frame));
 
         result = wait_for_media_time(&clock, next_event, stop_signals);
         if (result < 0)
