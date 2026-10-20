@@ -7,6 +7,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <math.h>
 #include <signal.h>
@@ -16,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <mxl/mxl.h>
 #include <mxl/flow.h>
@@ -102,6 +104,13 @@ typedef struct AudioSink {
     uint64_t written;
     uint64_t skipped;
 } AudioSink;
+
+typedef struct TestDomain {
+    const char *directory;
+    char *options_path;
+    int created;
+    int options_created;
+} TestDomain;
 
 typedef struct MXLTestSource {
     mxlInstance instance;
@@ -214,35 +223,39 @@ static int parse_options(int argc, char **argv, TestOptions *opts)
     return 0;
 }
 
-static int write_domain_options(const char *domain, uint64_t history_ms)
+static int create_domain(TestDomain *domain, const char *directory,
+                         uint64_t history_ms)
 {
     static const char filename[] = "/options.json";
-    size_t length = strlen(domain);
-    char *path;
+    size_t length = strlen(directory);
     FILE *file;
-    struct stat st;
+    int fd;
     int failed = 0;
 
-    if (mkdir(domain, 0777) && errno != EEXIST) {
+    domain->directory = directory;
+    if (length > SIZE_MAX - sizeof(filename))
+        return -1;
+    domain->options_path = malloc(length + sizeof(filename));
+    if (!domain->options_path)
+        return -1;
+    sprintf(domain->options_path, "%s%s", directory, filename);
+
+    if (mkdir(directory, 0777)) {
         perror("mxl_test_source: mkdir");
         return -1;
     }
-    if (stat(domain, &st) || !S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "mxl_test_source: invalid domain directory: %s\n", domain);
+    domain->created = 1;
+
+    fd = open(domain->options_path, O_WRONLY | O_CREAT | O_EXCL, 0666);
+    if (fd < 0) {
+        perror("mxl_test_source: options.json");
         return -1;
     }
-    if (length > SIZE_MAX - sizeof(filename))
-        return -1;
-
-    path = malloc(length + sizeof(filename));
-    if (!path)
-        return -1;
-    sprintf(path, "%s%s", domain, filename);
-
-    file = fopen(path, "w");
+    domain->options_created = 1;
+    file = fdopen(fd, "w");
     if (!file) {
-        perror("mxl_test_source: options.json");
-        free(path);
+        perror("mxl_test_source: fdopen");
+        close(fd);
         return -1;
     }
 
@@ -253,9 +266,25 @@ static int write_domain_options(const char *domain, uint64_t history_ms)
     if (fclose(file))
         failed = 1;
     if (failed)
-        fprintf(stderr, "mxl_test_source: failed to write %s\n", path);
+        fprintf(stderr, "mxl_test_source: failed to write %s\n", domain->options_path);
 
-    free(path);
+    return failed ? -1 : 0;
+}
+
+static int remove_domain(TestDomain *domain)
+{
+    int failed = 0;
+
+    if (domain->options_created && unlink(domain->options_path)) {
+        perror("mxl_test_source: unlink options.json");
+        failed = 1;
+    }
+    if (domain->created && rmdir(domain->directory)) {
+        perror("mxl_test_source: rmdir");
+        failed = 1;
+    }
+    free(domain->options_path);
+    domain->options_path = NULL;
     return failed ? -1 : 0;
 }
 
@@ -772,6 +801,7 @@ int main(int argc, char **argv)
 {
     TestOptions opts;
     MXLTestSource source = {0};
+    TestDomain domain = {0};
     sigset_t stop_signals;
     int failed = 0;
 
@@ -787,8 +817,10 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (write_domain_options(opts.domain_dir, opts.history_duration))
-        return EXIT_FAILURE;
+    if (create_domain(&domain, opts.domain_dir, opts.history_duration)) {
+        failed = 1;
+        goto finally;
+    }
 
     source.instance = mxlCreateInstance(opts.domain_dir, NULL);
     if (!source.instance) {
@@ -818,6 +850,8 @@ int main(int argc, char **argv)
 
 finally:
     if (close_source(&source))
+        failed = 1;
+    if (remove_domain(&domain))
         failed = 1;
     return failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }
