@@ -159,14 +159,30 @@ static int parse_double(const char *text, double *value)
     return 0;
 }
 
+static void usage(const char* exename) {
+    fprintf(stderr,
+        "Usage: %s domain_dir start_index duration speed history_duration "
+        "catchup_limit signal video_gap_rate video_gap_mean "
+        "audio_gap_rate audio_gap_mean\n"
+        "\n"
+        "  domain_dir        MXL domain directory\n"
+        "  start_index       Initial absolute video grain index\n"
+        "  duration          Media duration in seconds (0 = indefinite)\n"
+        "  speed             Media clock speed relative to real time (1.0 = normal)\n"
+        "  history_duration  MXL ring-buffer history in milliseconds\n"
+        "  catchup_limit     Maximum backlog to recover in milliseconds\n"
+        "  signal            Media signal type (currently: zero)\n"
+        "  video_gap_rate    Mean number of video interruptions per minute (0 = none)\n"
+        "  video_gap_mean    Mean video interruption duration in milliseconds\n"
+        "  audio_gap_rate    Mean number of audio interruptions per minute (0 = none)\n"
+        "  audio_gap_mean    Mean audio interruption duration in milliseconds\n",
+        exename);
+}
+
 static int parse_options(int argc, char **argv, TestOptions *opts)
 {
     if (argc != 12) {
-        fprintf(stderr,
-                "Usage: %s domain_dir start_index duration speed "
-                "history_duration catchup_limit signal "
-                "video_gap_rate video_gap_mean audio_gap_rate audio_gap_mean\n",
-                argv[0]);
+        usage(argv[0]);
         return -1;
     }
 
@@ -185,7 +201,7 @@ static int parse_options(int argc, char **argv, TestOptions *opts)
         parse_double(argv[9], &opts->video_gap_mean) ||
         parse_double(argv[10], &opts->audio_gap_rate) ||
         parse_double(argv[11], &opts->audio_gap_mean) ||
-        opts->duration <= 0 || opts->speed <= 0 ||
+        opts->duration < 0 || opts->speed <= 0 ||
         opts->history_duration == 0 ||
         opts->history_duration > UINT64_MAX / NS_PER_MS ||
         opts->catchup_limit == 0 ||
@@ -655,7 +671,7 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
 
         if (current_media_time(&clock, &now))
             return -1;
-        if (now >= opts->duration)
+        if (opts->duration > 0 && now >= opts->duration)
             break;
         if (now * VIDEO_RATE_NUM / VIDEO_RATE_DEN >=
             (double)(UINT64_MAX - opts->start_index - 1)) {
@@ -692,7 +708,7 @@ static int generate_media(MXLTestSource *source, const TestOptions *opts,
         if (wrote)
             continue;
 
-        next_event = opts->duration;
+        next_event = opts->duration > 0 ? opts->duration : INFINITY;
         next_event = min_double(next_event, video_gap.next_start);
         next_event = min_double(next_event, audio_gap.next_start);
         next_event = min_double(next_event, video_gap.active ?
