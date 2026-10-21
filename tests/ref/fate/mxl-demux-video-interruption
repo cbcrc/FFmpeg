@@ -1,0 +1,41 @@
+[mxl @ 0xADDR] no grain, too late with grain index 1000030, reset index and try again
+[mxl @ 0xADDR] init video grain index = 1000060, policy: headIndex
+[mxl @ 0xADDR] video pts jumped 31 frames
+mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-video-interruption
+mxl_demux_test: created video and audio flows
+mxl_demux_test: opening MXL demuxer (non-blocking)
+mxl_demux_test: initialized audio and video streams
+mxl_demux_test: video interruption test
+mxl_demux_test: starting synchronized A/V at video grain 1000000 and audio sample 800800000
+mxl_demux_test: normal A/V for 30 frames; interrupt video for 30 frames (500.5 ms); recover for 40 frames
+mxl_demux_test: read #1 [video=1 audio=0] video grain=1000000 PTS=16683333.333 ms duration=1
+mxl_demux_test: read #11 [video=6 audio=5] video grain=1000005 PTS=16683416.750 ms duration=1
+mxl_demux_test: read #21 [video=11 audio=10] video grain=1000010 PTS=16683500.167 ms duration=1
+mxl_demux_test: read #31 [video=16 audio=15] video grain=1000015 PTS=16683583.583 ms duration=1
+mxl_demux_test: read #41 [video=21 audio=20] video grain=1000020 PTS=16683667.000 ms duration=1
+mxl_demux_test: read #51 [video=26 audio=25] video grain=1000025 PTS=16683750.417 ms duration=1
+mxl_demux_test: interrupting video at grain index 1000030
+mxl_demux_test: continuing audio during interruption
+mxl_demux_test: read #61 [video=30 audio=31] audio sample=800824030 PTS=16683833.958 ms duration=801
+mxl_demux_test: read #71 [video=30 audio=41] audio sample=800832040 PTS=16684000.833 ms duration=801
+mxl_demux_test: read #81 [video=30 audio=51] audio sample=800840050 PTS=16684167.708 ms duration=801
+mxl_demux_test: uninterrupted audio delivered 30 packets during gap
+mxl_demux_test: resuming video at grain index 1000060
+mxl_demux_test: first video packet after recovery: grain=1000060 PTS=16684334.333 ms (read #91, video #31)
+mxl_demux_test:   last pre-interruption video grain=1000029 PTS=16683817.150 ms (read #59, video #30)
+mxl_demux_test:   received PTS jump: 517.183 ms
+mxl_demux_test: read #91 [video=31 audio=60] video grain=1000060 PTS=16684334.333 ms duration=1
+mxl_demux_test: first A/V pair after video recovery:
+mxl_demux_test:   video #31 (read #91) grain=1000060 PTS=16684334.333 ms
+mxl_demux_test:   audio #61 (read #92) sample=800848060 PTS=16684334.583 ms
+mxl_demux_test:   A-V PTS difference: +0.250 ms
+mxl_demux_test: read #101 [video=36 audio=65] video grain=1000065 PTS=16684417.750 ms duration=1
+mxl_demux_test: read #111 [video=41 audio=70] video grain=1000070 PTS=16684501.167 ms duration=1
+mxl_demux_test: read #121 [video=46 audio=75] video grain=1000075 PTS=16684584.583 ms duration=1
+mxl_demux_test: read #131 [video=51 audio=80] video grain=1000080 PTS=16684668.000 ms duration=1
+mxl_demux_test: read #141 [video=56 audio=85] video grain=1000085 PTS=16684751.417 ms duration=1
+mxl_demux_test: read #151 [video=61 audio=90] video grain=1000090 PTS=16684834.833 ms duration=1
+mxl_demux_test: read #161 [video=66 audio=95] video grain=1000095 PTS=16684918.250 ms duration=1
+mxl_demux_test: verified 70 video and 99 audio packets (40 recovered video packets; PTS/DTS, discontinuity, monotonicity)
+mxl_demux_test: cleanup complete
+mxl_demux_test: video-interruption: PASS
