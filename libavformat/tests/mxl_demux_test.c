@@ -357,6 +357,10 @@ finally:
     return failed;
 }
 
+/* Write audio samples in the half-open interval [start, end).  The
+ * end index is exclusive. Split writes into chunks of at most
+ * max_samples samples.
+ */
 static int write_audio(mxlFlowWriter writer, uint64_t start, uint64_t end,
                        size_t max_samples)
 {
@@ -429,35 +433,35 @@ typedef enum TestScenario {
 } TestScenario;
 
 typedef struct ReadState {
-    int video_stream;
-    int audio_stream;
-    int64_t last_video_pts;
-    int64_t last_audio_end;
-    unsigned total_reads;
-    unsigned video_packets;
-    unsigned audio_packets;
-    int target_stream;
-    int interrupted_stream;
-    unsigned startup_delay_frames;
-    int64_t pair_min_pts;
-    const char *pair_label;
-    int64_t last_before_pts;
-    unsigned last_before_read;
-    unsigned last_before_count;
-    int64_t first_after_pts;
-    unsigned recovered_packets;
-    int recovery_logging;
-    double pair_difference_ms;
-    int64_t first_target_pts;
-    unsigned first_target_read;
-    unsigned first_target_count;
-    int64_t latest_other_pts;
-    unsigned latest_other_read;
-    unsigned latest_other_count;
-    int64_t nearest_other_pts;
-    unsigned nearest_other_read;
-    unsigned nearest_other_count;
-    int pair_reported;
+    int video_stream;                    // Video stream index
+    int audio_stream;                    // Audio stream index
+    int64_t last_video_pts;              // Last received video PTS
+    int64_t last_audio_end;              // End PTS of last audio packet
+    unsigned total_reads;                // Total packets received
+    unsigned video_packets;              // Video packets received
+    unsigned audio_packets;              // Audio packets received
+    int interrupted_stream;              // Delayed-start or midstream-interrupted stream
+    int midstream_interrupted_stream;    // Midstream-interrupted stream, or -1
+    unsigned startup_delay_frames;       // Startup delay in video frames
+    int64_t pair_min_pts;                // Earliest interrupted PTS for A/V pairing
+    const char *pair_label;              // "startup" or "recovery"
+    int64_t last_before_pts;             // Last interrupted PTS before interruption
+    unsigned last_before_read;           // Read number of last pre-gap packet
+    unsigned last_before_count;          // Stream packet count at that read
+    int64_t first_after_pts;             // First interrupted PTS after recovery
+    unsigned recovered_packets;          // Interrupted packets received after recovery
+    int recovery_logging;                // Enable verbose recovery logging
+    double pair_difference_ms;           // First A/V pair timestamp difference
+    int64_t first_interrupted_pts;       // First eligible interrupted packet PTS
+    unsigned first_interrupted_read;     // Read number of first interrupted packet
+    unsigned first_interrupted_count;    // Interrupted packet count at that read
+    int64_t latest_uninterrupted_pts;    // Most recent uninterrupted-stream PTS
+    unsigned latest_uninterrupted_read;  // Read number of latest uninterrupted packet
+    unsigned latest_uninterrupted_count; // Uninterrupted-stream packet count at that read
+    int64_t nearest_uninterrupted_pts;   // Closest uninterrupted-stream PTS to interrupted
+    unsigned nearest_uninterrupted_read; // Read number of closest uninterrupted packet
+    unsigned nearest_uninterrupted_count;// Uninterrupted-stream packet count at that read
+    int pair_reported;                   // First A/V pair has been reported
 } ReadState;
 
 static int init_read_state(const AVFormatContext *context, ReadState *state,
@@ -470,11 +474,11 @@ static int init_read_state(const AVFormatContext *context, ReadState *state,
     state->audio_stream = -1;
     state->last_video_pts = AV_NOPTS_VALUE;
     state->last_audio_end = AV_NOPTS_VALUE;
-    state->first_target_pts = AV_NOPTS_VALUE;
+    state->first_interrupted_pts = AV_NOPTS_VALUE;
     state->last_before_pts = AV_NOPTS_VALUE;
     state->first_after_pts = AV_NOPTS_VALUE;
-    state->latest_other_pts = AV_NOPTS_VALUE;
-    state->nearest_other_pts = AV_NOPTS_VALUE;
+    state->latest_uninterrupted_pts = AV_NOPTS_VALUE;
+    state->nearest_uninterrupted_pts = AV_NOPTS_VALUE;
     for (i = 0; i < context->nb_streams; i++) {
         const AVStream *stream = context->streams[i];
         switch (stream->codecpar->codec_type) {
@@ -492,20 +496,21 @@ static int init_read_state(const AVFormatContext *context, ReadState *state,
             return -1;
         }
     }
-    state->target_stream = scenario == STARTUP_DELAY_VIDEO ||
-                            scenario == INTERRUPT_VIDEO ?
-                            state->video_stream : state->audio_stream;
-    state->interrupted_stream = scenario == INTERRUPT_VIDEO ||
-                                scenario == INTERRUPT_AUDIO ?
-                                state->target_stream : -1;
-    state->startup_delay_frames = state->interrupted_stream < 0 ?
+    state->interrupted_stream = scenario == STARTUP_DELAY_VIDEO ||
+                                scenario == INTERRUPT_VIDEO ?
+                                state->video_stream : state->audio_stream;
+    state->midstream_interrupted_stream = scenario == INTERRUPT_VIDEO ||
+                                          scenario == INTERRUPT_AUDIO ?
+                                          state->interrupted_stream : -1;
+    state->startup_delay_frames = state->midstream_interrupted_stream < 0 ?
                                   STARTUP_DELAY_FRAMES : 0;
-    state->pair_min_pts = state->target_stream == state->video_stream ?
-        (int64_t)(START_INDEX + (state->interrupted_stream < 0 ?
+    state->pair_min_pts = state->interrupted_stream == state->video_stream ?
+        (int64_t)(START_INDEX + (state->midstream_interrupted_stream < 0 ?
                  STARTUP_DELAY_FRAMES : INTERRUPTION_END_FRAME)) :
-        (int64_t)audio_index(START_INDEX + (state->interrupted_stream < 0 ?
+        (int64_t)audio_index(START_INDEX +
+                            (state->midstream_interrupted_stream < 0 ?
                              STARTUP_DELAY_FRAMES : INTERRUPTION_END_FRAME));
-    state->pair_label = state->interrupted_stream < 0 ? "startup" : "recovery";
+    state->pair_label = state->midstream_interrupted_stream < 0 ? "startup" : "recovery";
     return state->video_stream < 0 || state->audio_stream < 0 ? -1 : 0;
 }
 
@@ -532,19 +537,19 @@ static void log_packet(const ReadState *state, const AVFormatContext *context,
 
 static void log_first_pair(ReadState *state, const AVFormatContext *context)
 {
-    int target_video = state->target_stream == state->video_stream;
-    int64_t video_pts = target_video ? state->first_target_pts :
-                                        state->nearest_other_pts;
-    int64_t audio_pts = target_video ? state->nearest_other_pts :
-                                        state->first_target_pts;
-    unsigned video_read = target_video ? state->first_target_read :
-                                          state->nearest_other_read;
-    unsigned audio_read = target_video ? state->nearest_other_read :
-                                          state->first_target_read;
-    unsigned video_count = target_video ? state->first_target_count :
-                                            state->nearest_other_count;
-    unsigned audio_count = target_video ? state->nearest_other_count :
-                                            state->first_target_count;
+    int interrupted_video = state->interrupted_stream == state->video_stream;
+    int64_t video_pts = interrupted_video ? state->first_interrupted_pts :
+                                        state->nearest_uninterrupted_pts;
+    int64_t audio_pts = interrupted_video ? state->nearest_uninterrupted_pts :
+                                        state->first_interrupted_pts;
+    unsigned video_read = interrupted_video ? state->first_interrupted_read :
+                                          state->nearest_uninterrupted_read;
+    unsigned audio_read = interrupted_video ? state->nearest_uninterrupted_read :
+                                          state->first_interrupted_read;
+    unsigned video_count = interrupted_video ? state->first_interrupted_count :
+                                            state->nearest_uninterrupted_count;
+    unsigned audio_count = interrupted_video ? state->nearest_uninterrupted_count :
+                                            state->first_interrupted_count;
     double video_ms = packet_time_ms(context, state->video_stream, video_pts);
     double audio_ms = packet_time_ms(context, state->audio_stream, audio_pts);
     double difference_ms = audio_ms - video_ms;
@@ -552,7 +557,7 @@ static void log_first_pair(ReadState *state, const AVFormatContext *context)
     if (difference_ms > -0.0005 && difference_ms < 0.0005)
         difference_ms = 0.0;
     printf("mxl_demux_test: first A/V pair after %s %s:\n",
-           target_video ? "video" : "audio", state->pair_label);
+           interrupted_video ? "video" : "audio", state->pair_label);
     printf("mxl_demux_test:   video #%u (read #%u) grain=%" PRId64
            " PTS=%.3f ms\n", video_count, video_read, video_pts, video_ms);
     printf("mxl_demux_test:   audio #%u (read #%u) sample=%" PRId64
@@ -563,25 +568,42 @@ static void log_first_pair(ReadState *state, const AVFormatContext *context)
     state->pair_reported = 1;
 }
 
+/*
+ * Validate each demuxed packet against the expected MXL timeline:
+ * PTS/DTS equality, positive duration, valid index range, and monotonic
+ * timestamp progression. Reject packets from the interrupted interval.
+ *
+ * For midstream interruptions, record the last pre-interruption packet,
+ * the first recovered packet, and subsequent recovery progress.
+ *
+ * For both delayed startup and midstream recovery, identify the first
+ * eligible packet from the interrupted stream and find the closest PTS
+ * from the uninterrupted stream. Record their A/V timestamp difference
+ * for subsequent synchronization validation.
+ *
+ * Maintain packet counts and read order for diagnostics.
+ *
+ * Return 0 if the packet is valid, or -1 on validation failure.
+ */
 static int check_packet(ReadState *state, const AVFormatContext *context,
                         const AVPacket *packet, unsigned frame)
 {
     int64_t pts = packet->pts;
     int video = packet->stream_index == state->video_stream;
     int audio = packet->stream_index == state->audio_stream;
-    int target = packet->stream_index == state->target_stream;
+    int interrupted = packet->stream_index == state->interrupted_stream;
     int valid = pts != AV_NOPTS_VALUE && packet->dts == pts &&
                 packet->duration > 0;
 
     if (video) {
         int64_t start = (int64_t)START_INDEX +
-                        (state->target_stream == state->video_stream ?
+                        (state->interrupted_stream == state->video_stream ?
                          state->startup_delay_frames : 0);
         valid = valid && pts >= start &&
                 pts <= (int64_t)(START_INDEX + frame) &&
                 (state->last_video_pts == AV_NOPTS_VALUE ||
                  pts > state->last_video_pts);
-        if (state->interrupted_stream == state->video_stream)
+        if (state->midstream_interrupted_stream == state->video_stream)
             valid = valid &&
                     (pts < (int64_t)(START_INDEX + INTERRUPTION_START_FRAME) ||
                      pts >= (int64_t)(START_INDEX + INTERRUPTION_END_FRAME));
@@ -591,13 +613,13 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
         }
     } else if (audio) {
         int64_t start = (int64_t)audio_index(START_INDEX +
-                        (state->target_stream == state->audio_stream ?
+                        (state->interrupted_stream == state->audio_stream ?
                          state->startup_delay_frames : 0));
         valid = valid && pts >= start &&
                 pts <= (int64_t)audio_index(START_INDEX + frame + 1) &&
                 (state->last_audio_end == AV_NOPTS_VALUE ||
                  pts >= state->last_audio_end);
-        if (state->interrupted_stream == state->audio_stream)
+        if (state->midstream_interrupted_stream == state->audio_stream)
             valid = valid &&
                     (pts < (int64_t)audio_index(START_INDEX +
                                                INTERRUPTION_START_FRAME) ||
@@ -618,7 +640,7 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
     }
 
     state->total_reads++;
-    if (packet->stream_index == state->interrupted_stream) {
+    if (packet->stream_index == state->midstream_interrupted_stream) {
         if (pts < (int64_t)(video ?
                   START_INDEX + INTERRUPTION_START_FRAME :
                   audio_index(START_INDEX + INTERRUPTION_START_FRAME))) {
@@ -654,49 +676,62 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
             state->recovered_packets++;
     }
     if ((state->total_reads - 1) % 10 == 0 ||
-        (target && (video ? state->video_packets : state->audio_packets) == 1))
+        (interrupted && (video ? state->video_packets : state->audio_packets) == 1))
         log_packet(state, context, packet);
 
-    if (target && pts >= state->pair_min_pts &&
-        state->first_target_pts == AV_NOPTS_VALUE) {
-        state->first_target_pts = pts;
-        state->first_target_read = state->total_reads;
-        state->first_target_count = video ? state->video_packets :
+    if (interrupted && pts >= state->pair_min_pts &&
+        state->first_interrupted_pts == AV_NOPTS_VALUE) {
+        state->first_interrupted_pts = pts;
+        state->first_interrupted_read = state->total_reads;
+        state->first_interrupted_count = video ? state->video_packets :
                                              state->audio_packets;
-        state->nearest_other_pts = state->latest_other_pts;
-        state->nearest_other_read = state->latest_other_read;
-        state->nearest_other_count = state->latest_other_count;
-    } else if (!target && !state->pair_reported) {
-        if (state->first_target_pts != AV_NOPTS_VALUE) {
-            double delayed_ms = packet_time_ms(context, state->target_stream,
-                                                state->first_target_pts);
-            double other_ms = packet_time_ms(context, packet->stream_index, pts);
-            double nearest_ms = state->nearest_other_pts == AV_NOPTS_VALUE ?
+        state->nearest_uninterrupted_pts = state->latest_uninterrupted_pts;
+        state->nearest_uninterrupted_read = state->latest_uninterrupted_read;
+        state->nearest_uninterrupted_count = state->latest_uninterrupted_count;
+    } else if (!interrupted && !state->pair_reported) {
+        if (state->first_interrupted_pts != AV_NOPTS_VALUE) {
+            double interrupted_ms = packet_time_ms(context, state->interrupted_stream,
+                                                   state->first_interrupted_pts);
+            double uninterrupted_ms = packet_time_ms(context, packet->stream_index, pts);
+            double nearest_ms = state->nearest_uninterrupted_pts == AV_NOPTS_VALUE ?
                 0.0 : packet_time_ms(context, packet->stream_index,
-                                     state->nearest_other_pts);
-            double difference = other_ms - delayed_ms;
-            double nearest_difference = nearest_ms - delayed_ms;
+                                     state->nearest_uninterrupted_pts);
+            double difference = uninterrupted_ms - interrupted_ms;
+            double nearest_difference = nearest_ms - interrupted_ms;
 
-            if (state->nearest_other_pts == AV_NOPTS_VALUE ||
+            if (state->nearest_uninterrupted_pts == AV_NOPTS_VALUE ||
                 difference * difference < nearest_difference * nearest_difference) {
-                state->nearest_other_pts = pts;
-                state->nearest_other_read = state->total_reads;
-                state->nearest_other_count = video ? state->video_packets :
+                state->nearest_uninterrupted_pts = pts;
+                state->nearest_uninterrupted_read = state->total_reads;
+                state->nearest_uninterrupted_count = video ? state->video_packets :
                                                     state->audio_packets;
             }
-            if (other_ms >= delayed_ms &&
-                state->nearest_other_pts != AV_NOPTS_VALUE)
+            if (uninterrupted_ms >= interrupted_ms &&
+                state->nearest_uninterrupted_pts != AV_NOPTS_VALUE)
                 log_first_pair(state, context);
         }
-        state->latest_other_pts = pts;
-        state->latest_other_read = state->total_reads;
-        state->latest_other_count = video ? state->video_packets :
+        state->latest_uninterrupted_pts = pts;
+        state->latest_uninterrupted_read = state->total_reads;
+        state->latest_uninterrupted_count = video ? state->video_packets :
                                            state->audio_packets;
     }
     return 0;
 }
 
-/* Round-robin non-blocking reads may return EAGAIN for either flow. */
+/*
+ * Drain available packets from the non-blocking MXL demuxer using
+ * round-robin reads across the audio and video flows. Validate each
+ * received packet and update the read state.
+ *
+ * Attempt up to 32 reads per call, stopping after four consecutive
+ * EAGAIN results. EAGAIN indicates that no packet is currently available
+ * and is not treated as an error. Successful reads reset the EAGAIN count.
+ *
+ * Temporarily enable verbose demuxer logging during interruption
+ * recovery, restoring the previous log level after each read.
+ *
+ * Return 0 on success, or -1 on allocation, read, or validation failure.
+ */
 static int read_available(AVFormatContext *context, ReadState *state,
                           unsigned frame)
 {
@@ -740,6 +775,23 @@ finally:
     return failed;
 }
 
+/*
+ * Verify correct demuxer behavior when one MXL flow starts later than
+ * the other. Begin writing the uninterrupted flow immediately and delay
+ * the interrupted flow by 30 video frames (approximately 500 ms).
+ *
+ * Advance both flows on the same logical media timeline, reading and
+ * validating available packets after each frame. Verify that the
+ * uninterrupted stream produces packets before the delayed stream starts,
+ * and that no packets arrive prematurely from the delayed stream.
+ *
+ * After startup, verify that both streams deliver sufficient packets,
+ * that an A/V timestamp pair is observed, and that the demuxer keeps
+ * up with the writer. Packet timestamp validity and monotonicity are
+ * checked by check_packet().
+ *
+ * Return 0 if all checks pass, or -1 on failure.
+ */
 static int test_startup_gap(TestSource *source, AVFormatContext *context,
                             TestScenario scenario)
 {
@@ -829,6 +881,23 @@ static int test_startup_gap(TestSource *source, AVFormatContext *context,
     return 0;
 }
 
+/*
+ * Verify demuxer recovery from a midstream audio or video interruption.
+ * Begin with synchronized A/V, then stop writing one flow for 30 frames
+ * (approximately 500 ms) while the other continues uninterrupted.
+ * Resume the interrupted flow at its current media index, leaving a gap.
+ *
+ * Validate packets throughout the test, confirming that both streams
+ * are established before interruption and that the uninterrupted stream
+ * continues delivering packets during the gap.
+ *
+ * After resumption, verify recovery, timestamp monotonicity, and A/V
+ * synchronization within one video frame (approximately 16.7 ms).
+ * Confirm that both streams progress close to the end of the written
+ * timeline.
+ *
+ * Return 0 if all checks pass, or -1 on failure.
+ */
 static int test_interruption(TestSource *source, AVFormatContext *context,
                              TestScenario scenario)
 {
