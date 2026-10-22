@@ -36,6 +36,9 @@ COMMA := ,
 # Use this to normalize local paths
 FILTER_PWD_FROM_MXL_URI = sed "s|mxl://$$(pwd)|mxl:///path/to|g"
 
+# Normalize the build-dependent domain path in MXL demux regression diagnostics
+FILTER_MXL_DEMUX_PATH = sed -E "s@^(mxl_demux_test: creating MXL domain )/[^[:space:]]*/tests/data/tmp/mxl/@\1tests/data/tmp/mxl/@"
+
 # Use to normalize the log prefix in "[mxl 0xXXXXXXXX]" messages
 FILTER_MXL_LOG_PREFIX = sed -E "s/(\[mxl @ 0x)[[:xdigit:]]+(\])/\1ADDR\2/g"
 
@@ -265,7 +268,7 @@ $(MXL_REL_TMP_DIR):
 
 define MXL_DEMUX_FATE_TEST
 fate-mxl-demux-$(1): libavformat/tests/mxl_demux_test$(EXESUF)
-fate-mxl-demux-$(1): CMD = run libavformat/tests/mxl_demux_test$(EXESUF) $(MXL_TMP_DIR)/demux-$(1) $(1)
+fate-mxl-demux-$(1): CMD = run libavformat/tests/mxl_demux_test$(EXESUF) $(MXL_TMP_DIR)/demux-$(1) $(1) 2>&1 | $(FILTER_MXL_LOG_PREFIX) | $(FILTER_MXL_DEMUX_PATH)
 fate-mxl-demux-$(1): REF = $(SRC_PATH)/tests/ref/fate/mxl-demux-$(1)
 FATE-$$(CONFIG_MXL_DEMUXER) += fate-mxl-demux-$(1)
 endef

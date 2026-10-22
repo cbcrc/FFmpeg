@@ -1,4 +1,4 @@
-mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-audio-interruption
+mxl_demux_test: creating MXL domain tests/data/tmp/mxl/demux-audio-interruption
 mxl_demux_test: created video and audio flows
 mxl_demux_test: opening MXL demuxer (non-blocking)
 mxl_demux_test: initialized audio and video streams
