@@ -445,7 +445,7 @@ typedef struct ReadState {
     unsigned startup_delay_frames;        // Startup delay in video frames
     int64_t pair_min_pts;                 // Earliest pairing PTS in interrupted stream's time base
     const char *pair_label;               // "startup" or "recovery"
-    int64_t last_before_pts;              // Last interrupted PTS before interruption
+    int64_t last_before_pts;              // Last received PTS from interrupted stream before gap
     unsigned last_before_read;            // Read number of last pre-gap packet
     unsigned last_before_count;           // Stream packet count at that read
     int64_t first_after_pts;              // First interrupted PTS after recovery
