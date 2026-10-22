@@ -796,7 +796,7 @@ TESTPROGS-$(CONFIG_MOV_MUXER)            += movenc
 TESTPROGS-$(CONFIG_NETWORK)              += noproxy
 TESTPROGS-$(CONFIG_SRTP)                 += srtp
 TESTPROGS-$(CONFIG_IMF_DEMUXER)          += imf
-TESTPROGS-$(CONFIG_MXL_DEMUXER)          += mxl_diag mxl_uri mxl_loc mxl_json
+TESTPROGS-$(CONFIG_MXL_DEMUXER)          += mxl_diag mxl_uri mxl_loc mxl_json mxl_demux_test
 
 TOOLS     = aviocat                                                     \
             ismindex                                                    \
