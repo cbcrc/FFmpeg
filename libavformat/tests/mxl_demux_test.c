@@ -73,9 +73,7 @@
 #define INTERRUPTION_START_FRAME 30
 #define INTERRUPTION_END_FRAME 60
 #define INTERRUPTION_TEST_FRAMES 100
-#define AUDIO_SAMPLES_PER_FIVE_FRAMES UINT64_C(4004)
 #define AUDIO_CHANNELS 2
-
 #define VIDEO_FLOW_ID "932dc2da-0c7b-4c63-81d8-a48bb004c709"
 #define AUDIO_FLOW_ID "40178de3-71a0-452a-a541-dd14979ae7c1"
 
@@ -311,11 +309,11 @@ static int check_streams(const AVFormatContext *context)
 }
 
 
-/* An absolute video index maps to the same position on the audio timeline. */
-static uint64_t audio_index(uint64_t video_index)
+/* Convert an absolute video grain index to the nearest audio sample index. */
+static int64_t audio_index(uint64_t video_index)
 {
-    return (video_index / 5) * AUDIO_SAMPLES_PER_FIVE_FRAMES +
-           (video_index % 5) * AUDIO_SAMPLES_PER_FIVE_FRAMES / 5;
+    return av_rescale_q((int64_t)video_index, (AVRational){1001, 60000},
+                        (AVRational){1, 48000});
 }
 
 static int write_video(mxlFlowWriter writer, uint64_t index)
@@ -766,7 +764,7 @@ static int test_startup_gap(TestSource *source, AVFormatContext *context,
     printf("mxl_demux_test: startup gap test (delayed %s)\n",
            delay_video ? "video" : "audio");
     if (delay_video)
-        printf("mxl_demux_test: starting audio at sample index %" PRIu64 "\n",
+        printf("mxl_demux_test: starting audio at sample index %" PRId64 "\n",
                audio_index(START_INDEX));
     else
         printf("mxl_demux_test: starting video at grain index %" PRIu64 "\n",
@@ -793,7 +791,7 @@ static int test_startup_gap(TestSource *source, AVFormatContext *context,
         }
         if (frame >= (delay_video ? 0 : STARTUP_DELAY_FRAMES)) {
             if (!delay_video && frame == STARTUP_DELAY_FRAMES)
-                printf("mxl_demux_test: starting audio at sample index %" PRIu64 "\n",
+                printf("mxl_demux_test: starting audio at sample index %" PRId64 "\n",
                        audio_index(index));
             if (write_audio(source->audio, audio_index(index),
                             audio_index(index + 1), max_audio_samples))
@@ -856,7 +854,7 @@ static int test_interruption(TestSource *source, AVFormatContext *context,
     printf("mxl_demux_test: %s interruption test\n",
            interrupt_video ? "video" : "audio");
     printf("mxl_demux_test: starting synchronized A/V at video grain %" PRIu64
-           " and audio sample %" PRIu64 "\n",
+           " and audio sample %" PRId64 "\n",
            START_INDEX, audio_index(START_INDEX));
     printf("mxl_demux_test: normal A/V for %u frames; interrupt %s for %u "
            "frames (%.1f ms); recover for %u frames\n",
@@ -883,7 +881,7 @@ static int test_interruption(TestSource *source, AVFormatContext *context,
             printf("mxl_demux_test: interrupting %s at %s index %" PRIu64 "\n",
                    interrupt_video ? "video" : "audio",
                    interrupt_video ? "grain" : "sample",
-                   interrupt_video ? index : audio_index(index));
+                   interrupt_video ? index : (uint64_t)audio_index(index));
             printf("mxl_demux_test: continuing %s during interruption\n",
                    interrupt_video ? "audio" : "video");
         }
@@ -903,7 +901,7 @@ static int test_interruption(TestSource *source, AVFormatContext *context,
             printf("mxl_demux_test: resuming %s at %s index %" PRIu64 "\n",
                    interrupt_video ? "video" : "audio",
                    interrupt_video ? "grain" : "sample",
-                   interrupt_video ? index : audio_index(index));
+                   interrupt_video ? index : (uint64_t)audio_index(index));
             reader.recovery_logging = 1;
         }
         if (!(interrupted && interrupt_video) &&
