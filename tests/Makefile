@@ -359,7 +359,6 @@ testclean::
 	$(RM) $(CLEANSUFFIXES:%=tests/%)
 	$(RM) $(TESTTOOLS:%=tests/%$(HOSTEXESUF))
 	$(RM) tests/pixfmts.mak tests/test_copy.ffmeta
-	$(RM) tests/mxl_test_source$(EXESUF)
 
 -include $(wildcard tests/*.d)
 
