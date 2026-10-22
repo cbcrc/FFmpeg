@@ -1,0 +1,27 @@
+mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-delayed-audio
+mxl_demux_test: created video and audio flows
+mxl_demux_test: opening MXL demuxer (non-blocking)
+mxl_demux_test: initialized audio and video streams
+mxl_demux_test: startup gap test (delayed audio)
+mxl_demux_test: starting video at grain index 1000000
+mxl_demux_test: delaying audio by 30 video frames (500.5 ms)
+mxl_demux_test: read #1 [video=1 audio=0] video grain=1000000 PTS=16683333.333 ms duration=1
+mxl_demux_test: read #11 [video=11 audio=0] video grain=1000010 PTS=16683500.167 ms duration=1
+mxl_demux_test: read #21 [video=21 audio=0] video grain=1000020 PTS=16683667.000 ms duration=1
+mxl_demux_test: starting audio at sample index 800824024
+mxl_demux_test: read #31 [video=30 audio=1] audio sample=800824024 PTS=16683833.833 ms duration=801
+mxl_demux_test: first A/V pair after audio startup:
+mxl_demux_test:   video #31 (read #32) grain=1000030 PTS=16683833.833 ms
+mxl_demux_test:   audio #1 (read #31) sample=800824024 PTS=16683833.833 ms
+mxl_demux_test:   A-V PTS difference: +0.000 ms
+mxl_demux_test: read #41 [video=36 audio=5] video grain=1000035 PTS=16683917.250 ms duration=1
+mxl_demux_test: read #51 [video=41 audio=10] video grain=1000040 PTS=16684000.667 ms duration=1
+mxl_demux_test: read #61 [video=46 audio=15] video grain=1000045 PTS=16684084.083 ms duration=1
+mxl_demux_test: read #71 [video=51 audio=20] video grain=1000050 PTS=16684167.500 ms duration=1
+mxl_demux_test: read #81 [video=56 audio=25] video grain=1000055 PTS=16684250.917 ms duration=1
+mxl_demux_test: read #91 [video=61 audio=30] video grain=1000060 PTS=16684334.333 ms duration=1
+mxl_demux_test: read #101 [video=66 audio=35] video grain=1000065 PTS=16684417.750 ms duration=1
+mxl_demux_test: read #111 [video=71 audio=40] video grain=1000070 PTS=16684501.167 ms duration=1
+mxl_demux_test: verified 72 video and 41 audio packets (PTS/DTS, timeline, monotonicity)
+mxl_demux_test: cleanup complete
+mxl_demux_test: delayed-audio: PASS

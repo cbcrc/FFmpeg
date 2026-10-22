@@ -1,0 +1,43 @@
+[mxl @ 0xADDR] audio too late
+[mxl @ 0xADDR] no audio samples, too late with sample index 800823229, reset index and try again
+[mxl @ 0xADDR] init audio sample index = 800848048, policy: headIndex
+[mxl @ 0xADDR] audio pts jumped 25620 samples
+mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-audio-interruption
+mxl_demux_test: created video and audio flows
+mxl_demux_test: opening MXL demuxer (non-blocking)
+mxl_demux_test: initialized audio and video streams
+mxl_demux_test: audio interruption test
+mxl_demux_test: starting synchronized A/V at video grain 1000000 and audio sample 800800000
+mxl_demux_test: normal A/V for 30 frames; interrupt audio for 30 frames (500.5 ms); recover for 40 frames
+mxl_demux_test: read #1 [video=1 audio=0] video grain=1000000 PTS=16683333.333 ms duration=1
+mxl_demux_test: read #2 [video=1 audio=1] audio sample=800800000 PTS=16683333.333 ms duration=801
+mxl_demux_test: read #11 [video=6 audio=5] video grain=1000005 PTS=16683416.750 ms duration=1
+mxl_demux_test: read #21 [video=11 audio=10] video grain=1000010 PTS=16683500.167 ms duration=1
+mxl_demux_test: read #31 [video=16 audio=15] video grain=1000015 PTS=16683583.583 ms duration=1
+mxl_demux_test: read #41 [video=21 audio=20] video grain=1000020 PTS=16683667.000 ms duration=1
+mxl_demux_test: read #51 [video=26 audio=25] video grain=1000025 PTS=16683750.417 ms duration=1
+mxl_demux_test: interrupting audio at sample index 800824024
+mxl_demux_test: continuing video during interruption
+mxl_demux_test: read #61 [video=32 audio=29] video grain=1000031 PTS=16683850.517 ms duration=1
+mxl_demux_test: read #71 [video=42 audio=29] video grain=1000041 PTS=16684017.350 ms duration=1
+mxl_demux_test: read #81 [video=52 audio=29] video grain=1000051 PTS=16684184.183 ms duration=1
+mxl_demux_test: uninterrupted video delivered 30 packets during gap
+mxl_demux_test: resuming audio at sample index 800848048
+mxl_demux_test: first audio packet after recovery: sample=800848048 PTS=16684334.333 ms (read #91, audio #30)
+mxl_demux_test:   last pre-interruption audio sample=800822428 PTS=16683800.583 ms (read #58, audio #29)
+mxl_demux_test:   received PTS jump: 533.750 ms
+mxl_demux_test: read #91 [video=61 audio=30] audio sample=800848048 PTS=16684334.333 ms duration=801
+mxl_demux_test: first A/V pair after audio recovery:
+mxl_demux_test:   video #61 (read #90) grain=1000060 PTS=16684334.333 ms
+mxl_demux_test:   audio #30 (read #91) sample=800848048 PTS=16684334.333 ms
+mxl_demux_test:   A-V PTS difference: +0.000 ms
+mxl_demux_test: read #101 [video=66 audio=35] audio sample=800852053 PTS=16684417.771 ms duration=801
+mxl_demux_test: read #111 [video=71 audio=40] audio sample=800856058 PTS=16684501.208 ms duration=801
+mxl_demux_test: read #121 [video=76 audio=45] audio sample=800860063 PTS=16684584.646 ms duration=801
+mxl_demux_test: read #131 [video=81 audio=50] audio sample=800864068 PTS=16684668.083 ms duration=801
+mxl_demux_test: read #141 [video=86 audio=55] audio sample=800868073 PTS=16684751.521 ms duration=801
+mxl_demux_test: read #151 [video=91 audio=60] audio sample=800872078 PTS=16684834.958 ms duration=801
+mxl_demux_test: read #161 [video=96 audio=65] audio sample=800876083 PTS=16684918.396 ms duration=801
+mxl_demux_test: verified 100 video and 68 audio packets (39 recovered audio packets; PTS/DTS, discontinuity, monotonicity)
+mxl_demux_test: cleanup complete
+mxl_demux_test: audio-interruption: PASS
