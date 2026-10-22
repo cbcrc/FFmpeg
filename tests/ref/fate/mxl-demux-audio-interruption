@@ -2,7 +2,7 @@
 [mxl @ 0xADDR] no audio samples, too late with sample index 800823229, reset index and try again
 [mxl @ 0xADDR] init audio sample index = 800848048, policy: headIndex
 [mxl @ 0xADDR] audio pts jumped 25620 samples
-mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-audio-interruption
+mxl_demux_test: creating MXL domain tests/data/tmp/mxl/demux-audio-interruption
 mxl_demux_test: created video and audio flows
 mxl_demux_test: opening MXL demuxer (non-blocking)
 mxl_demux_test: initialized audio and video streams
