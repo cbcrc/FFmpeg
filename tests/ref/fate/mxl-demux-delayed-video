@@ -1,0 +1,28 @@
+mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-delayed-video
+mxl_demux_test: created video and audio flows
+mxl_demux_test: opening MXL demuxer (non-blocking)
+mxl_demux_test: initialized audio and video streams
+mxl_demux_test: startup gap test (delayed video)
+mxl_demux_test: starting audio at sample index 800800000
+mxl_demux_test: delaying video by 30 video frames (500.5 ms)
+mxl_demux_test: read #1 [video=0 audio=1] audio sample=800800000 PTS=16683333.333 ms duration=801
+mxl_demux_test: read #11 [video=0 audio=11] audio sample=800808010 PTS=16683500.208 ms duration=801
+mxl_demux_test: read #21 [video=0 audio=21] audio sample=800816020 PTS=16683667.083 ms duration=801
+mxl_demux_test: starting video at grain index 1000030
+mxl_demux_test: read #30 [video=1 audio=29] video grain=1000030 PTS=16683833.833 ms duration=1
+mxl_demux_test: read #31 [video=1 audio=30] audio sample=800823229 PTS=16683817.271 ms duration=801
+mxl_demux_test: first A/V pair after video startup:
+mxl_demux_test:   video #1 (read #30) grain=1000030 PTS=16683833.833 ms
+mxl_demux_test:   audio #31 (read #33) sample=800824030 PTS=16683833.958 ms
+mxl_demux_test:   A-V PTS difference: +0.125 ms
+mxl_demux_test: read #41 [video=6 audio=35] audio sample=800827234 PTS=16683900.708 ms duration=801
+mxl_demux_test: read #51 [video=11 audio=40] audio sample=800831239 PTS=16683984.146 ms duration=801
+mxl_demux_test: read #61 [video=16 audio=45] audio sample=800835244 PTS=16684067.583 ms duration=801
+mxl_demux_test: read #71 [video=21 audio=50] audio sample=800839249 PTS=16684151.021 ms duration=801
+mxl_demux_test: read #81 [video=26 audio=55] audio sample=800843254 PTS=16684234.458 ms duration=801
+mxl_demux_test: read #91 [video=31 audio=60] audio sample=800847259 PTS=16684317.896 ms duration=801
+mxl_demux_test: read #101 [video=36 audio=65] audio sample=800851264 PTS=16684401.333 ms duration=801
+mxl_demux_test: read #111 [video=41 audio=70] audio sample=800855269 PTS=16684484.771 ms duration=801
+mxl_demux_test: verified 42 video and 71 audio packets (PTS/DTS, timeline, monotonicity)
+mxl_demux_test: cleanup complete
+mxl_demux_test: delayed-video: PASS

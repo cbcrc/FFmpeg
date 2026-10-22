@@ -14,11 +14,13 @@ fate-mxl-diag: libavformat/tests/mxl_diag$(EXESUF)
 fate-mxl-diag: CMD = run libavformat/tests/mxl_diag$(EXESUF)
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-diag)
 
+
+MXL_REL_TMP_DIR := tests/data/tmp/mxl
+MXL_TMP_DIR := $(TARGET_PATH)/$(MXL_REL_TMP_DIR)
+
 # Note: MXL_OPTIONS is defined explicitly (even though it matches the
 # default MXL value) to make the test's dependency on this
 # history_duration setting unambiguous and intentional.
-
-MXL_TMP_DIR := $(TARGET_PATH)/tests/data/tmp/mxl
 MXL_OPTIONS := "{"\"urn:x-mxl:option:history_duration/v1.0\"":100000000}"
 MXL_VIDEO_FLOW_ID := 717f834b-4224-4c9b-8a64-ecb7726803b8
 MXL_AUDIO_FLOW_ID := ff39f65b-d760-4a7c-808d-4f2778de5658
@@ -42,7 +44,7 @@ FILTER_MXL_LOG_PREFIX = sed -E "s/(\[mxl @ 0x)[[:xdigit:]]+(\])/\1ADDR\2/g"
 PROBE_LOG_FILTER = $(FILTER_PWD_FROM_MXL_URI) | $(FILTER_MXL_LOG_PREFIX) | \
                    grep -E "^\[mxl @ 0xADDR\]|: Invalid argument$$|: Input/output error$$"
 
-# Usage: $(call MXL_MUX_DEMUX_TEST,<test-dir-name>,<mux-command>,<demux-command>,<failure-label>)
+# Usage: $(call MXL_MUX_DEMUX_TEST,<test-dir-name>,<mux-command>,<demux-command>,<failure-label>,<output-filter>)
 #
 # Run an MXL test in an isolated per-test temporary directory.
 #
@@ -54,7 +56,8 @@ PROBE_LOG_FILTER = $(FILTER_PWD_FROM_MXL_URI) | $(FILTER_MXL_LOG_PREFIX) | \
 # It then retries the supplied `demux-command` until it succeeds or
 # the retry limit is reached. On success it touches the local
 # ./sentinel file so the `mux-command` can perform synchronized
-# teardown. The macro waits for the muxer to exit before completing.
+# teardown. An optional `output-filter` is applied to successful demux
+# output. The macro waits for the muxer to exit before completing.
 #
 define MXL_MUX_DEMUX_TEST
     ( \
@@ -77,6 +80,12 @@ define MXL_MUX_DEMUX_TEST
             OUTFILE=$$(mktemp "$$TEST_DIR"/demux.out.XXXXXX) || exit 1; \
             $(3) > "$$OUTFILE" 2>&1; \
             STATUS=$$?; \
+            $(if $(strip $(5)), \
+                if [ $$STATUS -eq 0 ]; then \
+                    $(5) < "$$OUTFILE" > "$$OUTFILE.filtered" || exit 1; \
+                    mv "$$OUTFILE.filtered" "$$OUTFILE" || exit 1; \
+                fi; \
+            ) \
             $(FILTER_PWD_FROM_MXL_URI) < "$$OUTFILE"; \
             rm -f "$$OUTFILE"; \
             if [ $$STATUS -eq 0 ]; then \
@@ -109,7 +118,7 @@ fate-mxl-video-encdec: CMD = \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
             domain, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
-            -f mxl -max_video_frames 5 -grain_index_init 2 \
+            -f mxl -max_video_frames 5 -mxl_read_index_init tail \
             -i domain/$(MXL_VIDEO_FLOW_ID).mxl-flow \
             -bitexact -f framemd5 pipe:1, \
         demuxer)
@@ -128,7 +137,7 @@ fate-mxl-audio-encdec: CMD = \
             -teardown_sync_file sentinel -teardown_sync_timeout $(MXL_SENTINEL_TIMEOUT) \
             domain, \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
-            -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -grain_index_init 2 \
+            -f mxl -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) -mxl_read_index_init tail \
             -i domain/$(MXL_AUDIO_FLOW_ID).mxl-flow \
             -bitexact -f framemd5 pipe:1, \
         demuxer)
@@ -151,10 +160,11 @@ fate-mxl-av-encdec: CMD = \
         $(TARGET_PATH)/ffmpeg -hide_banner -v error \
             -f mxl -max_video_frames 5 \
             -max_audio_samples $(MXL_AUDIO_MAX_SAMPLES) -max_audio_samples_per_read $(MXL_AUDIO_SAMPLES_PER_PACKET) \
-            -grain_index_init 2 \
+            -mxl_read_index_init tail \
             -i "mxl://$$(pwd)/domain?id=$(MXL_VIDEO_FLOW_ID)&id=$(MXL_AUDIO_FLOW_ID)" \
             -bitexact -f framemd5 pipe:1, \
-        demuxer)
+        demuxer, \
+	$(abspath $(SRC_PATH)/tests/fate/mxl_normalize_framemd5.py))
 fate-mxl-av-encdec: REF = $(SRC_PATH)/tests/ref/fate/mxl-av-encdec
 FATE-yes += \
     $(if $(filter yes,$(CONFIG_MXL_DEMUXER)), \
@@ -247,3 +257,26 @@ fate-mxl-bad-flow: CMD = (\
     ) 
 fate-mxl-bad-flow: REF = $(SRC_PATH)/tests/ref/fate/mxl-bad-flow
 FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)),fate-mxl-bad-flow)
+
+# MXL demuxer timestamp and discontinuity regression tests
+
+$(MXL_REL_TMP_DIR):
+	$(Q)mkdir -p $@
+
+define MXL_DEMUX_FATE_TEST
+fate-mxl-demux-$(1): libavformat/tests/mxl_demux_test$(EXESUF)
+fate-mxl-demux-$(1): CMD = run libavformat/tests/mxl_demux_test$(EXESUF) $(MXL_TMP_DIR)/demux-$(1) $(1) 2>&1 | $(FILTER_MXL_LOG_PREFIX)
+fate-mxl-demux-$(1): REF = $(SRC_PATH)/tests/ref/fate/mxl-demux-$(1)
+FATE-$$(CONFIG_MXL_DEMUXER) += fate-mxl-demux-$(1)
+endef
+
+MXL_DEMUX_TESTS := delayed-audio delayed-video video-interruption audio-interruption
+
+$(foreach test,$(MXL_DEMUX_TESTS),$(eval $(call MXL_DEMUX_FATE_TEST,$(test))))
+
+FATE_MXL_DEMUX := $(addprefix fate-mxl-demux-,$(MXL_DEMUX_TESTS))
+
+$(FATE_MXL_DEMUX): | $(MXL_REL_TMP_DIR)
+
+.PHONY: fate-mxl-demux
+fate-mxl-demux: $(FATE_MXL_DEMUX)
