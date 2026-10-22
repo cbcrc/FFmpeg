@@ -433,35 +433,35 @@ typedef enum TestScenario {
 } TestScenario;
 
 typedef struct ReadState {
-    int video_stream;                    // Video stream index
-    int audio_stream;                    // Audio stream index
-    int64_t last_video_pts;              // Last received video PTS
-    int64_t last_audio_end;              // End PTS of last audio packet
-    unsigned total_reads;                // Total packets received
-    unsigned video_packets;              // Video packets received
-    unsigned audio_packets;              // Audio packets received
-    int interrupted_stream;              // Delayed-start or midstream-interrupted stream
-    int midstream_interrupted_stream;    // Midstream-interrupted stream, or -1
-    unsigned startup_delay_frames;       // Startup delay in video frames
-    int64_t pair_min_pts;                // Earliest interrupted PTS for A/V pairing
-    const char *pair_label;              // "startup" or "recovery"
-    int64_t last_before_pts;             // Last interrupted PTS before interruption
-    unsigned last_before_read;           // Read number of last pre-gap packet
-    unsigned last_before_count;          // Stream packet count at that read
-    int64_t first_after_pts;             // First interrupted PTS after recovery
-    unsigned recovered_packets;          // Interrupted packets received after recovery
-    int recovery_logging;                // Enable verbose recovery logging
-    double pair_difference_ms;           // First A/V pair timestamp difference
-    int64_t first_interrupted_pts;       // First eligible interrupted packet PTS
-    unsigned first_interrupted_read;     // Read number of first interrupted packet
-    unsigned first_interrupted_count;    // Interrupted packet count at that read
-    int64_t latest_uninterrupted_pts;    // Most recent uninterrupted-stream PTS
-    unsigned latest_uninterrupted_read;  // Read number of latest uninterrupted packet
-    unsigned latest_uninterrupted_count; // Uninterrupted-stream packet count at that read
-    int64_t nearest_uninterrupted_pts;   // Closest uninterrupted-stream PTS to interrupted
-    unsigned nearest_uninterrupted_read; // Read number of closest uninterrupted packet
-    unsigned nearest_uninterrupted_count;// Uninterrupted-stream packet count at that read
-    int pair_reported;                   // First A/V pair has been reported
+    int video_stream;                     // Video stream index
+    int audio_stream;                     // Audio stream index
+    int64_t last_video_pts;               // Last received video PTS
+    int64_t last_audio_end;               // End PTS of last audio packet
+    unsigned total_reads;                 // Total packets received
+    unsigned video_packets;               // Video packets received
+    unsigned audio_packets;               // Audio packets received
+    int interrupted_stream;               // Delayed-start or midstream-interrupted stream
+    int midstream_interrupted_stream;     // Midstream-interrupted stream, or -1
+    unsigned startup_delay_frames;        // Startup delay in video frames
+    int64_t pair_min_pts;                 // Earliest pairing PTS in interrupted stream's time base
+    const char *pair_label;               // "startup" or "recovery"
+    int64_t last_before_pts;              // Last interrupted PTS before interruption
+    unsigned last_before_read;            // Read number of last pre-gap packet
+    unsigned last_before_count;           // Stream packet count at that read
+    int64_t first_after_pts;              // First interrupted PTS after recovery
+    unsigned recovered_packets;           // Interrupted packets received after recovery
+    int recovery_logging;                 // Enable verbose recovery logging
+    double pair_difference_ms;            // First audio minus video timestamp difference
+    int64_t first_interrupted_pts;        // First eligible interrupted packet PTS
+    unsigned first_interrupted_read;      // Read number of first interrupted packet
+    unsigned first_interrupted_count;     // Interrupted packet count at that read
+    int64_t latest_uninterrupted_pts;     // Most recent uninterrupted-stream PTS
+    unsigned latest_uninterrupted_read;   // Read number of latest uninterrupted packet
+    unsigned latest_uninterrupted_count;  // Uninterrupted-stream packet count at that read
+    int64_t nearest_uninterrupted_pts;    // Closest uninterrupted-stream PTS to interrupted
+    unsigned nearest_uninterrupted_read;  // Read number of closest uninterrupted packet
+    unsigned nearest_uninterrupted_count; // Uninterrupted-stream packet count at that read
+    int pair_reported;                    // First A/V pair has been reported
 } ReadState;
 
 static int init_read_state(const AVFormatContext *context, ReadState *state,
@@ -577,9 +577,9 @@ static void log_first_pair(ReadState *state, const AVFormatContext *context)
  * the first recovered packet, and subsequent recovery progress.
  *
  * For both delayed startup and midstream recovery, identify the first
- * eligible packet from the interrupted stream and find the closest PTS
- * from the uninterrupted stream. Record their A/V timestamp difference
- * for subsequent synchronization validation.
+ * eligible packet from the interrupted stream and find the nearest
+ * observed uninterrupted-stream packet in timestamp order. Record their
+ * A/V timestamp difference for subsequent synchronization validation.
  *
  * Maintain packet counts and read order for diagnostics.
  *
@@ -719,9 +719,9 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
 }
 
 /*
- * Drain available packets from the non-blocking MXL demuxer using
- * round-robin reads across the audio and video flows. Validate each
- * received packet and update the read state.
+ * Read and validate available packets from the non-blocking MXL demuxer.
+ * The demuxer polls the audio and video flows in round-robin order.
+ * Update the read state for each received packet.
  *
  * Attempt up to 32 reads per call, stopping after four consecutive
  * EAGAIN results. EAGAIN indicates that no packet is currently available
@@ -776,9 +776,9 @@ finally:
 }
 
 /*
- * Verify correct demuxer behavior when one MXL flow starts later than
- * the other. Begin writing the uninterrupted flow immediately and delay
- * the interrupted flow by 30 video frames (approximately 500 ms).
+ * Verify demuxer behavior when one MXL flow starts later than the other.
+ * Begin writing the uninterrupted flow immediately and delay startup of
+ * the other flow by 30 video frames (approximately 500 ms).
  *
  * Advance both flows on the same logical media timeline, reading and
  * validating available packets after each frame. Verify that the
@@ -891,10 +891,10 @@ static int test_startup_gap(TestSource *source, AVFormatContext *context,
  * are established before interruption and that the uninterrupted stream
  * continues delivering packets during the gap.
  *
- * After resumption, verify recovery, timestamp monotonicity, and A/V
- * synchronization within one video frame (approximately 16.7 ms).
- * Confirm that both streams progress close to the end of the written
- * timeline.
+ * After resumption, verify recovery, timestamp monotonicity, and that
+ * the first recovered A/V timestamp pair differs by no more than one
+ * video frame. Confirm that both streams progress close to the end of
+ * the written timeline.
  *
  * Return 0 if all checks pass, or -1 on failure.
  */
