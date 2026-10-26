@@ -49,6 +49,11 @@
 #include <inttypes.h>
 #include <stdbool.h>
 
+typedef enum MXLWriteIndexMode {
+    MXL_WRITE_INDEX_GENERATE,
+    MXL_WRITE_INDEX_PTS,
+} MXLWriteIndexMode;
+
 typedef struct FlowState {
     int stream_index;
     const char *flow_id;
@@ -56,8 +61,16 @@ typedef struct FlowState {
     mxlFlowConfigInfo *mxl_flow_config_info;
     mxlFlowWriter mxl_flow_writer;
     mxlRational mxl_grain_rate;
-    uint64_t mxl_start_index;
-    uint64_t mxl_cur_index;
+    uint64_t mxl_next_index;
+
+    struct {
+        uint64_t start_index;
+    } mxl_write_index_generate;
+
+    struct {
+        uint64_t last_index;
+        bool initialized;
+    } mxl_write_index_pts;
 } FlowState;
 
 typedef struct VideoStreamState {
@@ -91,6 +104,7 @@ typedef struct MXLContext {
     // options
     const char *audio_flow_id;
     const char *video_flow_id;
+    int mxl_write_index;
     const char *teardown_sync_file;
     int teardown_sync_timeout;
 
@@ -117,6 +131,33 @@ static const AVOption mxl_options[] = {
         .type        = AV_OPT_TYPE_STRING,
         .default_val = { .str = NULL },
         .flags       = FLAGS,
+    },
+    {
+        .name        = "mxl_write_index",
+        .help        = "MXL write index source",
+        .offset      = OFFSET(mxl_write_index),
+        .type        = AV_OPT_TYPE_INT,
+        .default_val = { .i64 = MXL_WRITE_INDEX_GENERATE },
+        .min         = MXL_WRITE_INDEX_GENERATE,
+        .max         = MXL_WRITE_INDEX_PTS,
+        .flags       = FLAGS | AV_OPT_FLAG_AUDIO_PARAM,
+        .unit        = "mxl_write_index",
+    },
+    {
+        .name        = "generate",
+        .help        = "generate MXL write indices",
+        .type        = AV_OPT_TYPE_CONST,
+        .default_val = { .i64 = MXL_WRITE_INDEX_GENERATE },
+        .flags       = FLAGS | AV_OPT_FLAG_AUDIO_PARAM,
+        .unit        = "mxl_write_index",
+    },
+    {
+        .name        = "pts",
+        .help        = "use packet PTS as MXL write index",
+        .type        = AV_OPT_TYPE_CONST,
+        .default_val = { .i64 = MXL_WRITE_INDEX_PTS },
+        .flags       = FLAGS | AV_OPT_FLAG_AUDIO_PARAM,
+        .unit        = "mxl_write_index",
     },
     {
         .name        = "teardown_sync_file",
@@ -466,29 +507,73 @@ finally:
 
 }
 
+static int select_mxl_write_index(AVFormatContext *s, FlowState *flow,
+                                  const AVPacket *pkt, uint64_t *write_index)
+{
+    MXLContext *p = s->priv_data;
+    uint64_t selected_index = 0;
+    int exit_status = 0;
+
+    av_assert0(p->mxl_write_index == MXL_WRITE_INDEX_GENERATE ||
+               p->mxl_write_index == MXL_WRITE_INDEX_PTS);
+
+    if (p->mxl_write_index == MXL_WRITE_INDEX_GENERATE) {
+        if (0 == flow->mxl_write_index_generate.start_index) {
+            selected_index = mxlGetCurrentIndex(&flow->mxl_grain_rate);
+            av_assert0(MXL_UNDEFINED_INDEX != selected_index);
+        } else {
+            selected_index = flow->mxl_next_index;
+        }
+    } else if (p->mxl_write_index == MXL_WRITE_INDEX_PTS) {
+        if (pkt->pts == AV_NOPTS_VALUE) {
+            loge(s, "%s: missing PTS, cannot determine MXL write index\n", flow->detail);
+            exit_status = AVERROR(EINVAL);
+        } else if (pkt->pts < 0) {
+            loge(s, "%s: invalid negative PTS %" PRId64 "\n", flow->detail, pkt->pts);
+            exit_status = AVERROR(EINVAL);
+        } else {
+            selected_index = (uint64_t)pkt->pts;
+            if (flow->mxl_write_index_pts.initialized) {
+                if (selected_index == flow->mxl_write_index_pts.last_index)
+                    logw(s, "%s: duplicate MXL index %" PRIu64 " (expected %" PRIu64 ")\n",
+                         flow->detail, selected_index, flow->mxl_next_index);
+                else if (selected_index > flow->mxl_next_index)
+                    logw(s, "%s: forward MXL index discontinuity (expected %" PRIu64 ", got %" PRIu64 ")\n",
+                         flow->detail, flow->mxl_next_index, selected_index);
+                else if (selected_index < flow->mxl_next_index)
+                    logw(s, "%s: backward/overlapping MXL index (expected %" PRIu64 ", got %" PRIu64 ")\n",
+                         flow->detail, flow->mxl_next_index, selected_index);
+            }
+        }
+    }
+
+    av_assert0(exit_status <= 0);
+
+    if (exit_status == 0)
+        *write_index = selected_index;
+
+    return exit_status;
+}
+
 static int video_write_packet(AVFormatContext *s, AVPacket *pkt)
 {
     int exit_status = AVERROR_UNKNOWN;
     MXLContext *p = s->priv_data;
 
-    if (0 == p->state.video.flow.mxl_start_index) {
-        uint64_t cur_index = mxlGetCurrentIndex(&p->state.video.flow.mxl_grain_rate);
-        av_assert0(MXL_UNDEFINED_INDEX != cur_index);
-        p->state.video.flow.mxl_start_index = cur_index;
-        p->state.video.flow.mxl_cur_index = cur_index;
-        logv(s, "video start index = %" PRIu64 "\n", cur_index);
-    }
-
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
     mxlGrainInfo grain_info = {0};
     bool grain_open = false;
     uint8_t *payload = NULL;
+    uint64_t write_index = MXL_UNDEFINED_INDEX;
 
-    logd(s, "write video grain for index = %" PRIu64 "\n",
-         p->state.video.flow.mxl_cur_index);
+    exit_status = select_mxl_write_index(s, &p->state.video.flow, pkt, &write_index);
+    if (exit_status < 0)
+        goto finally;
+
+    logd(s, "write video grain for index = %" PRIu64 "\n", write_index);
 
     mxl_status = mxlFlowWriterOpenGrain(p->state.video.flow.mxl_flow_writer,
-                                        p->state.video.flow.mxl_cur_index,
+                                        write_index,
                                         &grain_info, &payload);
     if (MXL_STATUS_OK != mxl_status) {
         loge(s, "mxlFlowWriterOpenGrain error %s\n", mxl_status_to_str(mxl_status));
@@ -524,7 +609,17 @@ static int video_write_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     grain_open = false;
-    p->state.video.flow.mxl_cur_index++;
+    if (p->mxl_write_index == MXL_WRITE_INDEX_GENERATE) {
+        if (0 == p->state.video.flow.mxl_write_index_generate.start_index) {
+            p->state.video.flow.mxl_write_index_generate.start_index = write_index;
+            logv(s, "video start index = %" PRIu64 "\n", write_index);
+        }
+    } else {
+        av_assert0(p->mxl_write_index == MXL_WRITE_INDEX_PTS);
+        p->state.video.flow.mxl_write_index_pts.last_index = write_index;
+        p->state.video.flow.mxl_write_index_pts.initialized = true;
+    }
+    p->state.video.flow.mxl_next_index = write_index + 1;
 
     exit_status = 0;
 
@@ -675,24 +770,21 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
     av_assert0(pkt->duration <=
                pkt->size / p->state.audio.flow_def_params.channel_count / sizeof(float));
 
-    if (0 == p->state.audio.flow.mxl_start_index) {
-        uint64_t cur_index = mxlGetCurrentIndex(&p->state.audio.flow.mxl_grain_rate);
-        av_assert0(MXL_UNDEFINED_INDEX != cur_index);
-        p->state.audio.flow.mxl_start_index = cur_index;
-        p->state.audio.flow.mxl_cur_index = cur_index;
-        logv(s, "audio start index = %" PRIu64 "\n", cur_index);
-    }
-
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
     bool samples_open = false;
     size_t sample_count = pkt->duration;
+    uint64_t write_index = MXL_UNDEFINED_INDEX;
+
+    exit_status = select_mxl_write_index(s, &p->state.audio.flow, pkt, &write_index);
+    if (exit_status < 0)
+        goto finally;
 
     logd(s, "write audio samples for index = %" PRIu64 ", sample_count = %zu\n",
-         p->state.audio.flow.mxl_cur_index, sample_count);
+         write_index, sample_count);
 
     mxlMutableWrappedMultiBufferSlice payload = (mxlMutableWrappedMultiBufferSlice){0};
     mxl_status = mxlFlowWriterOpenSamples(p->state.audio.flow.mxl_flow_writer,
-                                          p->state.audio.flow.mxl_cur_index,
+                                          write_index,
                                           sample_count, &payload);
     if (MXL_STATUS_OK != mxl_status) {
         loge(s, "mxlFlowWriterOpenSamples error %s\n", mxl_status_to_str(mxl_status));
@@ -717,7 +809,17 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     samples_open = false;
-    p->state.audio.flow.mxl_cur_index += sample_count;
+    if (p->mxl_write_index == MXL_WRITE_INDEX_GENERATE) {
+        if (0 == p->state.audio.flow.mxl_write_index_generate.start_index) {
+            p->state.audio.flow.mxl_write_index_generate.start_index = write_index;
+            logv(s, "audio start index = %" PRIu64 "\n", write_index);
+        }
+    } else {
+        av_assert0(p->mxl_write_index == MXL_WRITE_INDEX_PTS);
+        p->state.audio.flow.mxl_write_index_pts.last_index = write_index;
+        p->state.audio.flow.mxl_write_index_pts.initialized = true;
+    }
+    p->state.audio.flow.mxl_next_index = write_index + sample_count;
 
     exit_status = 0;
 
