@@ -265,7 +265,7 @@ $(MXL_REL_TMP_DIR):
 
 define MXL_DEMUX_FATE_TEST
 fate-mxl-demux-$(1): libavformat/tests/mxl_demux_test$(EXESUF)
-fate-mxl-demux-$(1): CMD = run libavformat/tests/mxl_demux_test$(EXESUF) $(MXL_TMP_DIR)/demux-$(1) $(1) 2>&1 | $(FILTER_MXL_LOG_PREFIX)
+fate-mxl-demux-$(1): CMD = run libavformat/tests/mxl_demux_test$(EXESUF) $(MXL_TMP_DIR)/demux-$(1) $(1)
 fate-mxl-demux-$(1): REF = $(SRC_PATH)/tests/ref/fate/mxl-demux-$(1)
 FATE-$$(CONFIG_MXL_DEMUXER) += fate-mxl-demux-$(1)
 endef
