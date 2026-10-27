@@ -436,8 +436,28 @@ static int write_and_verify(TestMux *mux, int64_t pts, unsigned ordinal)
     packet = make_packet(mux->media_type, pts, ordinal);
     if (!packet)
         goto finally;
+
+    if (mux->media_type == AVMEDIA_TYPE_VIDEO) {
+        printf("mxl_mux_test: packet %u: writing video PTS=%" PRId64
+               ", MXL grain index=%" PRId64 "\n",
+               ordinal + 1, packet->pts, packet->pts);
+    } else {
+        printf("mxl_mux_test: packet %u: writing audio PTS=%" PRId64
+               ", samples=%" PRId64 ", MXL head index=%" PRIu64 "\n",
+               ordinal + 1, packet->pts, packet->duration,
+               (uint64_t)packet->pts + packet->duration - 1);
+    }
     if (submit_packet(mux, packet, 0, 0) || verify_packet(mux, packet))
         goto finally;
+    if (mux->media_type == AVMEDIA_TYPE_VIDEO) {
+        printf("mxl_mux_test: verified video grain at index %" PRId64
+               " (payload matches)\n", packet->pts);
+    } else {
+        printf("mxl_mux_test: verified %" PRId64 " audio samples at head %" PRIu64
+               " (%d channels, payload matches)\n",
+               packet->duration, (uint64_t)packet->pts + packet->duration - 1,
+               AUDIO_CHANNELS);
+    }
     failed = 0;
 
 finally:
@@ -453,11 +473,25 @@ static int test_indices(TestMux *mux, int discontinuity)
                      VIDEO_FRAME_COUNT : AUDIO_PACKET_COUNT;
     unsigned i;
 
+    printf("mxl_mux_test: %s %s test\n",
+           mux->media_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
+           discontinuity ? "forward discontinuity" : "PTS continuity");
     for (i = 0; i < count; i++) {
         int64_t packet_index = i + (discontinuity && i >= 2 ? 2 : 0);
-        if (write_and_verify(mux, START_INDEX + packet_index * step, i))
+        int64_t pts = START_INDEX + packet_index * step;
+
+        if (discontinuity && i == 2)
+            printf("mxl_mux_test: introducing forward gap of %" PRId64
+                   " %s (expected next PTS=%" PRId64 ", actual PTS=%" PRId64 ")\n",
+                   (packet_index - (int64_t)i) * step,
+                   mux->media_type == AVMEDIA_TYPE_VIDEO ? "grains" : "samples",
+                   START_INDEX + (int64_t)i * step, pts);
+        if (write_and_verify(mux, pts, i))
             return -1;
     }
+    printf("mxl_mux_test: verified %u %s packets (indices, payload%s)\n",
+           count, mux->media_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
+           discontinuity ? ", forward gap" : "");
     return 0;
 }
 
@@ -470,6 +504,9 @@ static int test_invalid_pts(TestMux *mux, int missing)
                    AUDIO_SAMPLES_PER_PACKET;
     int failed = -1;
 
+    printf("mxl_mux_test: %s %s PTS rejection test\n",
+           mux->media_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio",
+           missing ? "missing" : "negative");
     if (write_and_verify(mux, START_INDEX, 0))
         goto finally;
     status = mxlFlowReaderGetRuntimeInfo(mux->reader, &before);
@@ -481,17 +518,22 @@ static int test_invalid_pts(TestMux *mux, int missing)
     if (!invalid)
         goto finally;
 
+    printf("mxl_mux_test: submitting packet with %s PTS (expecting EINVAL)\n",
+           missing ? "AV_NOPTS_VALUE" : "-1");
     /* Bypass libavformat's generic timestamp checks to test mxlenc.c itself. */
     if (submit_packet(mux, invalid, 1, AVERROR(EINVAL)))
         goto finally;
+    printf("mxl_mux_test: muxer rejected invalid PTS with EINVAL\n");
     status = mxlFlowReaderGetRuntimeInfo(mux->reader, &after);
     if (status != MXL_STATUS_OK || before.headIndex != after.headIndex) {
         fprintf(stderr, "mxl_mux_test: rejected packet changed MXL flow head\n");
         goto finally;
     }
-
+    printf("mxl_mux_test: verified MXL flow head unchanged after rejection\n");
+    printf("mxl_mux_test: writing next valid packet after rejection\n");
     if (write_and_verify(mux, START_INDEX + step, 2))
         goto finally;
+    printf("mxl_mux_test: verified rejection and subsequent valid write\n");
     failed = 0;
 
 finally:
@@ -510,10 +552,14 @@ static int run_scenario(TestScenario scenario, const char *directory)
                                    AVMEDIA_TYPE_VIDEO : AVMEDIA_TYPE_AUDIO;
     int failed = -1;
 
+    printf("mxl_mux_test: creating MXL domain\n");
     if (create_domain(&domain, directory))
         goto finally;
+    printf("mxl_mux_test: opening %s muxer (PTS-derived write indices)\n",
+           media_type == AVMEDIA_TYPE_VIDEO ? "video" : "audio");
     if (open_muxer(&mux, directory, media_type))
         goto finally;
+    printf("mxl_mux_test: initialized MXL flow and native reader\n");
 
     switch (scenario) {
     case VIDEO_PTS:
@@ -539,6 +585,8 @@ finally:
         failed = -1;
     if (remove_domain(&domain))
         failed = -1;
+    if (!failed)
+        printf("mxl_mux_test: cleanup complete\n");
     return failed;
 }
 
@@ -546,6 +594,8 @@ int main(int argc, char **argv)
 {
     TestScenario scenario;
     int failed;
+
+    av_log_set_level(AV_LOG_ERROR);
 
     if (argc != 3 || argv[1][0] != '/' || !argv[1][1]) {
         fprintf(stderr, "Usage: %s absolute_domain_dir "

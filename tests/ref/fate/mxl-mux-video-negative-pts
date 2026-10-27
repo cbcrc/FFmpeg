@@ -1,0 +1,15 @@
+mxl_mux_test: creating MXL domain
+mxl_mux_test: opening video muxer (PTS-derived write indices)
+mxl_mux_test: initialized MXL flow and native reader
+mxl_mux_test: video negative PTS rejection test
+mxl_mux_test: packet 1: writing video PTS=1000000, MXL grain index=1000000
+mxl_mux_test: verified video grain at index 1000000 (payload matches)
+mxl_mux_test: submitting packet with -1 PTS (expecting EINVAL)
+mxl_mux_test: muxer rejected invalid PTS with EINVAL
+mxl_mux_test: verified MXL flow head unchanged after rejection
+mxl_mux_test: writing next valid packet after rejection
+mxl_mux_test: packet 3: writing video PTS=1000001, MXL grain index=1000001
+mxl_mux_test: verified video grain at index 1000001 (payload matches)
+mxl_mux_test: verified rejection and subsequent valid write
+mxl_mux_test: cleanup complete
+mxl_mux_test: video-negative-pts: PASS

@@ -280,3 +280,24 @@ $(FATE_MXL_DEMUX): | $(MXL_REL_TMP_DIR)
 
 .PHONY: fate-mxl-demux
 fate-mxl-demux: $(FATE_MXL_DEMUX)
+
+# MXL muxer PTS-derived write index regression tests
+
+define MXL_MUX_FATE_TEST
+fate-mxl-mux-$(1): libavformat/tests/mxl_mux_test$(EXESUF)
+fate-mxl-mux-$(1): CMD = run libavformat/tests/mxl_mux_test$(EXESUF) $(MXL_TMP_DIR)/mux-$(1) $(1)
+fate-mxl-mux-$(1): REF = $(SRC_PATH)/tests/ref/fate/mxl-mux-$(1)
+FATE-$$(CONFIG_MXL_MUXER) += fate-mxl-mux-$(1)
+endef
+
+MXL_MUX_TESTS := video-pts audio-pts video-discontinuity audio-discontinuity \
+                 video-missing-pts audio-missing-pts video-negative-pts audio-negative-pts
+
+$(foreach test,$(MXL_MUX_TESTS),$(eval $(call MXL_MUX_FATE_TEST,$(test))))
+
+FATE_MXL_MUX := $(addprefix fate-mxl-mux-,$(MXL_MUX_TESTS))
+
+$(FATE_MXL_MUX): | $(MXL_REL_TMP_DIR)
+
+.PHONY: fate-mxl-mux
+fate-mxl-mux: $(FATE_MXL_MUX)
