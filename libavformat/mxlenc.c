@@ -153,7 +153,7 @@ static const AVOption mxl_options[] = {
     },
     {
         .name        = "pts",
-        .help        = "use packet PTS as MXL write index",
+        .help        = "derive MXL write indices from packet PTS",
         .type        = AV_OPT_TYPE_CONST,
         .default_val = { .i64 = MXL_WRITE_INDEX_PTS },
         .flags       = FLAGS | AV_OPT_FLAG_AUDIO_PARAM,
@@ -508,7 +508,8 @@ finally:
 }
 
 static int select_mxl_write_index(AVFormatContext *s, FlowState *flow,
-                                  const AVPacket *pkt, uint64_t *write_index)
+                                  const AVPacket *pkt, size_t sample_count,
+                                  uint64_t *write_index)
 {
     MXLContext *p = s->priv_data;
     uint64_t selected_index = 0;
@@ -531,18 +532,26 @@ static int select_mxl_write_index(AVFormatContext *s, FlowState *flow,
         } else if (pkt->pts < 0) {
             loge(s, "%s: invalid negative PTS %" PRId64 "\n", flow->detail, pkt->pts);
             exit_status = AVERROR(EINVAL);
+        } else if (sample_count == 0) {
+            loge(s, "%s: invalid zero sample count\n", flow->detail);
+            exit_status = AVERROR(EINVAL);
+        } else if ((uint64_t)pkt->pts > UINT64_MAX - (sample_count - 1)) {
+            loge(s, "%s: MXL write index overflow (PTS %" PRId64 ", sample count %zu)\n",
+                 flow->detail, pkt->pts, sample_count);
+            exit_status = AVERROR(EINVAL);
         } else {
-            selected_index = (uint64_t)pkt->pts;
+            selected_index = (uint64_t)pkt->pts + sample_count - 1;
             if (flow->mxl_write_index_pts.initialized) {
+                uint64_t expected_index = flow->mxl_write_index_pts.last_index + sample_count;
                 if (selected_index == flow->mxl_write_index_pts.last_index)
                     logw(s, "%s: duplicate MXL index %" PRIu64 " (expected %" PRIu64 ")\n",
-                         flow->detail, selected_index, flow->mxl_next_index);
-                else if (selected_index > flow->mxl_next_index)
+                         flow->detail, selected_index, expected_index);
+                else if (selected_index > expected_index)
                     logw(s, "%s: forward MXL index discontinuity (expected %" PRIu64 ", got %" PRIu64 ")\n",
-                         flow->detail, flow->mxl_next_index, selected_index);
-                else if (selected_index < flow->mxl_next_index)
+                         flow->detail, expected_index, selected_index);
+                else if (selected_index < expected_index)
                     logw(s, "%s: backward/overlapping MXL index (expected %" PRIu64 ", got %" PRIu64 ")\n",
-                         flow->detail, flow->mxl_next_index, selected_index);
+                         flow->detail, expected_index, selected_index);
             }
         }
     }
@@ -566,7 +575,7 @@ static int video_write_packet(AVFormatContext *s, AVPacket *pkt)
     uint8_t *payload = NULL;
     uint64_t write_index = MXL_UNDEFINED_INDEX;
 
-    exit_status = select_mxl_write_index(s, &p->state.video.flow, pkt, &write_index);
+    exit_status = select_mxl_write_index(s, &p->state.video.flow, pkt, 1, &write_index);
     if (exit_status < 0)
         goto finally;
 
@@ -772,10 +781,17 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
     bool samples_open = false;
-    size_t sample_count = pkt->duration;
+    size_t sample_count;
     uint64_t write_index = MXL_UNDEFINED_INDEX;
 
-    exit_status = select_mxl_write_index(s, &p->state.audio.flow, pkt, &write_index);
+    if (pkt->duration <= 0) {
+        loge(s, "invalid audio packet duration %" PRId64 "\n", pkt->duration);
+        exit_status = AVERROR(EINVAL);
+        goto finally;
+    }
+    sample_count = pkt->duration;
+
+    exit_status = select_mxl_write_index(s, &p->state.audio.flow, pkt, sample_count, &write_index);
     if (exit_status < 0)
         goto finally;
 
