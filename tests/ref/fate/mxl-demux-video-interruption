@@ -1,6 +1,3 @@
-[mxl @ 0xADDR] no grain, too late with grain index 1000030, reset index and try again
-[mxl @ 0xADDR] init video grain index = 1000060, policy: headIndex
-[mxl @ 0xADDR] video pts jumped 31 frames
 mxl_demux_test: creating MXL domain /home/jpt/ffmpeg.9.dev/8.x-orig/FFmpeg/tests/data/tmp/mxl/demux-video-interruption
 mxl_demux_test: created video and audio flows
 mxl_demux_test: opening MXL demuxer (non-blocking)
