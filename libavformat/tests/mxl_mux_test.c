@@ -23,7 +23,8 @@
 /*
  * Verify that the MXL muxer writes video grains at packet PTS indices and
  * audio samples at MXL head indices derived from first-sample PTS,
- * preserves forward gaps, and rejects missing or negative PTS.
+ * preserves forward gaps, rejects missing or negative PTS, and validates
+ * audio sample counts against PCM packet size.
  *
  * Each scenario creates one MXL flow through libavformat and verifies its
  * contents using the native MXL reader API. There are no threads or clocks.
@@ -35,7 +36,8 @@
  *   video-pts, audio-pts,
  *   video-discontinuity, audio-discontinuity,
  *   video-missing-pts, audio-missing-pts,
- *   video-negative-pts, audio-negative-pts
+ *   video-negative-pts, audio-negative-pts,
+ *   audio-duration, audio-invalid-size
  *
  * The domain directory must not already exist; it is removed on completion.
  */
@@ -56,6 +58,7 @@
 #include <libavformat/avformat.h>
 #include "libavformat/mux.h"
 #include <libavutil/channel_layout.h>
+#include <libavutil/common.h>
 #include <libavutil/error.h>
 #include <libavutil/log.h>
 #include <libavutil/opt.h>
@@ -97,6 +100,8 @@ typedef enum TestScenario {
     AUDIO_MISSING_PTS,
     VIDEO_NEGATIVE_PTS,
     AUDIO_NEGATIVE_PTS,
+    AUDIO_DURATION,
+    AUDIO_INVALID_SIZE,
 } TestScenario;
 
 static const char *const scenario_names[] = {
@@ -108,6 +113,8 @@ static const char *const scenario_names[] = {
     "audio-missing-pts",
     "video-negative-pts",
     "audio-negative-pts",
+    "audio-duration",
+    "audio-invalid-size",
 };
 
 static int create_domain(TestDomain *domain, const char *directory)
@@ -364,7 +371,7 @@ static int verify_video(mxlFlowReader reader, const AVPacket *packet)
 static int verify_audio(mxlFlowReader reader, const AVPacket *packet)
 {
     mxlWrappedMultiBufferSlice payload = {0};
-    size_t count = (size_t)packet->duration;
+    size_t count = (size_t)packet->size / (AUDIO_CHANNELS * sizeof(float));
     uint64_t head_index = (uint64_t)packet->pts + count - 1;
     const float *expected = (const float *)packet->data;
     size_t sample_base = 0;
@@ -541,6 +548,79 @@ finally:
     return failed;
 }
 
+static int test_audio_duration(TestMux *mux)
+{
+    const int64_t durations[] = {0, AUDIO_SAMPLES_PER_PACKET / 2};
+    AVPacket *packet = NULL;
+    unsigned i;
+    int failed = -1;
+
+    printf("mxl_mux_test: audio packet duration independence test\n");
+    for (i = 0; i < FF_ARRAY_ELEMS(durations); i++) {
+        packet = make_packet(AVMEDIA_TYPE_AUDIO,
+                             START_INDEX + i * AUDIO_SAMPLES_PER_PACKET, i);
+        if (!packet)
+            goto finally;
+        packet->duration = durations[i];
+        printf("mxl_mux_test: submitting audio packet with duration=%" PRId64
+               ", payload samples=%d\n", packet->duration, AUDIO_SAMPLES_PER_PACKET);
+        if (submit_packet(mux, packet, 1, 0) || verify_audio(mux->reader, packet))
+            goto finally;
+        printf("mxl_mux_test: verified %d audio samples at head %" PRIu64
+               " (payload matches)\n", AUDIO_SAMPLES_PER_PACKET,
+               (uint64_t)packet->pts + AUDIO_SAMPLES_PER_PACKET - 1);
+        av_packet_free(&packet);
+    }
+    printf("mxl_mux_test: verified audio sample counts independent of duration\n");
+    failed = 0;
+
+finally:
+    av_packet_free(&packet);
+    return failed;
+}
+
+static int test_audio_invalid_size(TestMux *mux)
+{
+    mxlFlowRuntimeInfo before = {0}, after = {0};
+    AVPacket *invalid = NULL;
+    mxlStatus status;
+    int failed = -1;
+
+    printf("mxl_mux_test: invalid audio PCM packet size rejection test\n");
+    if (write_and_verify(mux, START_INDEX, 0))
+        goto finally;
+    status = mxlFlowReaderGetRuntimeInfo(mux->reader, &before);
+    if (status != MXL_STATUS_OK)
+        goto finally;
+
+    invalid = make_packet(AVMEDIA_TYPE_AUDIO,
+                          START_INDEX + AUDIO_SAMPLES_PER_PACKET, 1);
+    if (!invalid)
+        goto finally;
+    av_shrink_packet(invalid, invalid->size - sizeof(float));
+
+    printf("mxl_mux_test: submitting %d-byte stereo PCM packet "
+           "(expecting EINVAL)\n", invalid->size);
+    if (submit_packet(mux, invalid, 1, AVERROR(EINVAL)))
+        goto finally;
+    printf("mxl_mux_test: muxer rejected invalid PCM packet size with EINVAL\n");
+    status = mxlFlowReaderGetRuntimeInfo(mux->reader, &after);
+    if (status != MXL_STATUS_OK || before.headIndex != after.headIndex) {
+        fprintf(stderr, "mxl_mux_test: rejected packet changed MXL flow head\n");
+        goto finally;
+    }
+    printf("mxl_mux_test: verified MXL flow head unchanged after rejection\n");
+    printf("mxl_mux_test: writing next valid packet after rejection\n");
+    if (write_and_verify(mux, START_INDEX + AUDIO_SAMPLES_PER_PACKET, 2))
+        goto finally;
+    printf("mxl_mux_test: verified rejection and subsequent valid write\n");
+    failed = 0;
+
+finally:
+    av_packet_free(&invalid);
+    return failed;
+}
+
 static int run_scenario(TestScenario scenario, const char *directory)
 {
     TestDomain domain = {0};
@@ -578,6 +658,12 @@ static int run_scenario(TestScenario scenario, const char *directory)
     case AUDIO_NEGATIVE_PTS:
         failed = test_invalid_pts(&mux, 0);
         break;
+    case AUDIO_DURATION:
+        failed = test_audio_duration(&mux);
+        break;
+    case AUDIO_INVALID_SIZE:
+        failed = test_audio_invalid_size(&mux);
+        break;
     }
 
 finally:
@@ -601,13 +687,14 @@ int main(int argc, char **argv)
         fprintf(stderr, "Usage: %s absolute_domain_dir "
                 "{video-pts|audio-pts|video-discontinuity|audio-discontinuity|"
                 "video-missing-pts|audio-missing-pts|"
-                "video-negative-pts|audio-negative-pts}\n", argv[0]);
+                "video-negative-pts|audio-negative-pts|"
+                "audio-duration|audio-invalid-size}\n", argv[0]);
         return EXIT_FAILURE;
     }
-    for (scenario = VIDEO_PTS; scenario <= AUDIO_NEGATIVE_PTS; scenario++)
+    for (scenario = VIDEO_PTS; scenario <= AUDIO_INVALID_SIZE; scenario++)
         if (!strcmp(argv[2], scenario_names[scenario]))
             break;
-    if (scenario > AUDIO_NEGATIVE_PTS) {
+    if (scenario > AUDIO_INVALID_SIZE) {
         fprintf(stderr, "mxl_mux_test: unknown scenario %s\n", argv[2]);
         return EXIT_FAILURE;
     }

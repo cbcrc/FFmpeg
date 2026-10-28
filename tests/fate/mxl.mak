@@ -291,7 +291,8 @@ FATE-$$(CONFIG_MXL_MUXER) += fate-mxl-mux-$(1)
 endef
 
 MXL_MUX_TESTS := video-pts audio-pts video-discontinuity audio-discontinuity \
-                 video-missing-pts audio-missing-pts video-negative-pts audio-negative-pts
+                 video-missing-pts audio-missing-pts video-negative-pts audio-negative-pts \
+		 audio-duration audio-invalid-size
 
 $(foreach test,$(MXL_MUX_TESTS),$(eval $(call MXL_MUX_FATE_TEST,$(test))))
 
