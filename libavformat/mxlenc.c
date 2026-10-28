@@ -780,20 +780,27 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     av_assert0(s->streams[pkt->stream_index]->codecpar->ch_layout.nb_channels ==
                p->state.audio.flow_def_params.channel_count);
-    av_assert0(pkt->duration <=
-               pkt->size / p->state.audio.flow_def_params.channel_count / sizeof(float));
 
     mxlStatus mxl_status = MXL_ERR_UNKNOWN;
     bool samples_open = false;
     size_t sample_count;
     uint64_t write_index = MXL_UNDEFINED_INDEX;
 
-    if (pkt->duration <= 0) {
-        loge(s, "invalid audio packet duration %" PRId64 "\n", pkt->duration);
+    const int channel_count = p->state.audio.flow_def_params.channel_count;
+    if (channel_count <= 0) {
+        loge(s, "invalid audio channel count %d\n", channel_count);
         exit_status = AVERROR(EINVAL);
         goto finally;
     }
-    sample_count = pkt->duration;
+
+    const size_t bytes_per_sample_frame = (size_t)channel_count * sizeof(float);
+    if (pkt->size <= 0 || (size_t)pkt->size % bytes_per_sample_frame != 0) {
+        loge(s, "invalid audio packet size %d (sample frame size %zu)\n",
+             pkt->size, bytes_per_sample_frame);
+        exit_status = AVERROR(EINVAL);
+        goto finally;
+    }
+    sample_count = (size_t)pkt->size / bytes_per_sample_frame;
 
     exit_status = select_mxl_write_index(s, &p->state.audio.flow, pkt, sample_count, &write_index);
     if (exit_status < 0)
