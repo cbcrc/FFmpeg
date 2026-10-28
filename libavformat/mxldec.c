@@ -1660,13 +1660,11 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             // MXL limits readable audio ring buffer length to half
             // the buffer size. The tail calc must handle
             // max_audio_samples smaller than readableBufLen and, in
-            // that case, align to the final (possibly partial) read
-            // block.
+            // that case, align to the end of the first read block.
             int readableBufLen = (int)(flow_info->config.continuous.bufferLength / 2);
             if (0 < p->max_audio_samples && p->max_audio_samples < readableBufLen) {
-                int rem = p->max_audio_samples % max_samples_per_read;
                 uint64_t start_index = flow_info->runtime.headIndex -
-                    (uint64_t)(p->max_audio_samples - (rem ? rem : max_samples_per_read));
+                    (uint64_t)(p->max_audio_samples - samples_this_read);
                 av_assert0(flow_info->runtime.headIndex >= start_index);
                 stream_ctx->flow.audio.mxl_sample_index = start_index;
             }
@@ -1850,9 +1848,15 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
          payload.base.fragments[0].pointer,
          payload.base.fragments[1].size > 0 ? payload.base.fragments[1].pointer : NULL);
 
-    // all good, advance the sample index
-    stream_ctx->flow.audio.mxl_sample_index += samples_this_read;
+    // all good, advance to the head index of the next read
     stream_ctx->flow.audio.sample_point_count += samples_this_read;
+    int samples_next_read = max_samples_per_read;
+    if (p->max_audio_samples > 0) {
+        int remaining = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
+        if (samples_next_read > remaining)
+            samples_next_read = remaining;
+    }
+    stream_ctx->flow.audio.mxl_sample_index += samples_next_read;
 
     exit_status = 0;
 

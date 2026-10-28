@@ -522,8 +522,12 @@ static int select_mxl_write_index(AVFormatContext *s, FlowState *flow,
         if (0 == flow->mxl_write_index_generate.start_index) {
             selected_index = mxlGetCurrentIndex(&flow->mxl_grain_rate);
             av_assert0(MXL_UNDEFINED_INDEX != selected_index);
+        } else if (flow->mxl_next_index > UINT64_MAX - (sample_count - 1)) {
+            loge(s, "%s: generated MXL write index overflow (next index %" PRIu64
+                 ", sample count %zu)\n", flow->detail, flow->mxl_next_index, sample_count);
+            exit_status = AVERROR(EINVAL);
         } else {
-            selected_index = flow->mxl_next_index;
+            selected_index = flow->mxl_next_index + sample_count - 1;
         }
     } else if (p->mxl_write_index == MXL_WRITE_INDEX_PTS) {
         if (pkt->pts == AV_NOPTS_VALUE) {
@@ -835,7 +839,7 @@ static int audio_write_packet(AVFormatContext *s, AVPacket *pkt)
         p->state.audio.flow.mxl_write_index_pts.last_index = write_index;
         p->state.audio.flow.mxl_write_index_pts.initialized = true;
     }
-    p->state.audio.flow.mxl_next_index = write_index + sample_count;
+    p->state.audio.flow.mxl_next_index = write_index + 1;
 
     exit_status = 0;
 
