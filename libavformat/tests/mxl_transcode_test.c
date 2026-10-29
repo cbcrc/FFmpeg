@@ -24,10 +24,10 @@
  * Verify that an FFmpeg MXL demuxer-to-muxer stream copy preserves
  * absolute grain/sample indices and media payloads.
  *
- * Video-only and audio-only operation transfer and verify one second of
- * media through an external FFmpeg stream-copy process. Combined A/V
- * verification will follow. FFmpeg creates the destination flows; the
- * external runner creates the destination domain directory.
+ * Video-only, audio-only, and combined A/V operation transfer and verify
+ * one second of media through an external FFmpeg stream-copy process.
+ * FFmpeg creates the destination flows; the external runner creates the
+ * destination domain directory.
  *
  * Usage:
  *   tests/mxl_transcode_test <source_domain>
@@ -59,9 +59,12 @@
 #define VIDEO_GRAIN_COUNT 60
 #define AUDIO_SAMPLE_COUNT 48000
 #define AUDIO_CHANNELS 2
+#define AUDIO_SAMPLES_PER_VIDEO_GRAIN (AUDIO_SAMPLE_COUNT / VIDEO_GRAIN_COUNT)
+#define AV_WRITE_AHEAD_FRAMES 2
 #define VIDEO_START_INDEX UINT64_C(1000000)
 #define AUDIO_START_INDEX UINT64_C(800000000)
 #define READ_TIMEOUT_NS UINT64_C(30000000000)
+#define AUDIO_READ_POLL_INTERVAL_US 10000
 #define DST_STARTUP_RETRIES 60
 
 typedef enum TestMedia {
@@ -572,7 +575,6 @@ finally:
  * API for retesting once the library has been fixed.
  */
 #define USE_MXL_BLOCKING_AUDIO_READ 0
-#define AUDIO_READ_POLL_INTERVAL_US 10000
 static mxlStatus test_mxlFlowReaderGetSamples(mxlFlowReader reader,
                                               uint64_t head_index, size_t count,
                                               uint64_t timeout_ns,
@@ -693,6 +695,92 @@ finally:
     return failed;
 }
 
+
+/* Verify completed A/V data while keeping the producer ahead of the reader. */
+static int verify_av_frame(TestContext *context, const TestOptions *opts,
+                           int frame, size_t *audio_verified)
+{
+    size_t count = opts->audio_samples_per_buffer;
+    size_t audio_end = (frame + 1) * AUDIO_SAMPLES_PER_VIDEO_GRAIN;
+    uint64_t video_index = VIDEO_START_INDEX + frame;
+    uint64_t audio_head;
+
+    if (verify_video_grain(context, video_index))
+        return -1;
+
+    while (*audio_verified + count <= audio_end) {
+        audio_head = AUDIO_START_INDEX + *audio_verified + count - 1;
+        if (verify_audio_buffer(context, audio_head, count))
+            return -1;
+        *audio_verified += count;
+    }
+
+    if (frame == 0 || (frame + 1) % 10 == 0) {
+        printf("mxl_transcode_test: verified A/V video grain %d/%d, "
+               "audio samples %zu/%d\n",
+               frame + 1, VIDEO_GRAIN_COUNT, *audio_verified,
+               AUDIO_SAMPLE_COUNT);
+        fflush(stdout);
+    }
+    return 0;
+}
+
+static int test_av(TestContext *context, const TestOptions *opts)
+{
+    size_t count = opts->audio_samples_per_buffer;
+    size_t audio_written = 0;
+    size_t audio_verified = 0;
+    uint64_t video_index, audio_head;
+    int frame;
+    int failed = -1;
+
+    for (frame = 0; frame < VIDEO_GRAIN_COUNT; frame++) {
+        video_index = VIDEO_START_INDEX + frame;
+        if (write_video_grain(context, video_index))
+            goto finally;
+
+        /* Publish enough audio to cover the current video grain. */
+        while (audio_written < (size_t)(frame + 1) * AUDIO_SAMPLES_PER_VIDEO_GRAIN) {
+            audio_head = AUDIO_START_INDEX + audio_written + count - 1;
+            if (write_audio_buffer(context, audio_head, count))
+                goto finally;
+            audio_written += count;
+        }
+
+        if (frame == 0) {
+            if (open_dst_reader(context, opts, opts->dst_video_id, "video",
+                                &context->video_reader) ||
+                open_dst_reader(context, opts, opts->dst_audio_id, "audio",
+                                &context->audio_reader))
+                goto finally;
+        }
+
+        /* Allow FFmpeg a small lead for interleaving both streams. */
+        if (frame >= AV_WRITE_AHEAD_FRAMES &&
+            verify_av_frame(context, opts, frame - AV_WRITE_AHEAD_FRAMES,
+                            &audio_verified))
+            goto finally;
+    }
+
+    /* Verify the remaining video grains and audio buffers. */
+    for (frame = VIDEO_GRAIN_COUNT - AV_WRITE_AHEAD_FRAMES;
+         frame < VIDEO_GRAIN_COUNT; frame++) {
+        if (verify_av_frame(context, opts, frame, &audio_verified))
+            goto finally;
+    }
+    if (audio_written != AUDIO_SAMPLE_COUNT ||
+        audio_verified != AUDIO_SAMPLE_COUNT) {
+        fprintf(stderr, "mxl_transcode_test: incomplete A/V audio transfer "
+                "(written %zu, verified %zu)\n", audio_written, audio_verified);
+        goto finally;
+    }
+
+    failed = 0;
+
+finally:
+    return failed;
+}
+
 static int cleanup_test(TestContext *context)
 {
     mxlStatus status;
@@ -784,8 +872,8 @@ int main(int argc, char **argv)
         goto finally;
     if (opts.media == MEDIA_AUDIO && test_audio(&context, &opts))
         goto finally;
-    if (opts.media == (MEDIA_VIDEO | MEDIA_AUDIO))
-        puts("mxl_transcode_test: A/V media transfer not yet implemented");
+    if (opts.media == (MEDIA_VIDEO | MEDIA_AUDIO) && test_av(&context, &opts))
+        goto finally;
     failed = 0;
 
 finally:
