@@ -24,9 +24,9 @@
  * Verify that an FFmpeg MXL demuxer-to-muxer stream copy preserves
  * absolute grain/sample indices and media payloads.
  *
- * Phase 1 creates the source MXL domain and selected flow writers.
- * FFmpeg will create the destination domain and flows; destination
- * reader initialization and media verification follow in later phases.
+ * Phase 2 transfers and verifies 60 video grains via an external FFmpeg
+ * stream-copy process. Audio-only and combined A/V tests will follow.
+ * FFmpeg creates the destination domain and flows.
  *
  * Usage:
  *   tests/mxl_transcode_test <source_domain>
@@ -40,6 +40,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,9 +52,15 @@
 #include <mxl/flow.h>
 
 #define DEFAULT_AUDIO_SAMPLES_PER_BUFFER 800
+#define VIDEO_GRAIN_COUNT 60
+#define VIDEO_START_INDEX UINT64_C(1000000)
+#define VIDEO_READ_TIMEOUT_NS UINT64_C(30000000000)
+#define DESTINATION_STARTUP_RETRIES 60
 
-#define MEDIA_VIDEO 1
-#define MEDIA_AUDIO 2
+typedef enum TestMedia {
+    MEDIA_VIDEO = 1 << 0,
+    MEDIA_AUDIO = 1 << 1,
+} TestMedia;
 
 static const char video_flow_template[] =
     "{"
@@ -99,7 +106,7 @@ typedef struct TestOptions {
     const char *destination_audio_id;
     size_t audio_samples_per_buffer;
     int audio_samples_specified;
-    int media;
+    TestMedia media;
 } TestOptions;
 
 typedef struct TestDomain {
@@ -112,6 +119,9 @@ typedef struct TestContext {
     mxlInstance source_instance;
     mxlFlowWriter video_writer;
     mxlFlowWriter audio_writer;
+    mxlInstance destination_instance;
+    mxlFlowReader video_reader;
+    uint32_t video_grain_size;
 } TestContext;
 
 static int valid_uuid(const char *id)
@@ -314,11 +324,179 @@ finally:
     return failed;
 }
 
+
+static int open_destination_video(TestContext *context, const TestOptions *opts)
+{
+    struct stat st;
+    mxlStatus status = MXL_STATUS_OK;
+    int attempt;
+    int failed = -1;
+
+    printf("mxl_transcode_test: waiting for FFmpeg destination video flow\n");
+    fflush(stdout);
+    for (attempt = 0; attempt < DESTINATION_STARTUP_RETRIES; attempt++) {
+        if (!context->destination_instance &&
+            !stat(opts->destination_directory, &st) && S_ISDIR(st.st_mode)) {
+            context->destination_instance =
+                mxlCreateInstance(opts->destination_directory, NULL);
+        }
+        if (context->destination_instance) {
+            status = mxlCreateFlowReader(context->destination_instance,
+                                         opts->destination_video_id, NULL,
+                                         &context->video_reader);
+            if (status == MXL_STATUS_OK) {
+                failed = 0;
+                goto finally;
+            }
+        }
+        sleep(1);
+    }
+    fprintf(stderr, "mxl_transcode_test: destination video flow unavailable "
+            "after %d retries (last status %d)\n",
+            DESTINATION_STARTUP_RETRIES, (int)status);
+
+finally:
+    return failed;
+}
+
+static int write_video_grain(TestContext *context, uint64_t index)
+{
+    mxlGrainInfo grain = {0};
+    uint8_t *payload = NULL;
+    mxlStatus status;
+    int opened = 0;
+    int failed = -1;
+
+    status = mxlFlowWriterOpenGrain(context->video_writer, index,
+                                    &grain, &payload);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: open video grain %" PRIu64
+                " failed (%d)\n", index, (int)status);
+        goto finally;
+    }
+    opened = 1;
+    if (!payload || !grain.grainSize || !grain.totalSlices) {
+        fprintf(stderr, "mxl_transcode_test: invalid source video grain %"
+                PRIu64 "\n", index);
+        goto finally;
+    }
+    if (context->video_grain_size &&
+        grain.grainSize != context->video_grain_size) {
+        fprintf(stderr, "mxl_transcode_test: source video grain size changed "
+                "at index %" PRIu64 "\n", index);
+        goto finally;
+    }
+    context->video_grain_size = grain.grainSize;
+    memset(payload, (uint8_t)(index % 255), grain.grainSize);
+    grain.validSlices = grain.totalSlices;
+    status = mxlFlowWriterCommitGrain(context->video_writer, &grain);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: commit video grain %" PRIu64
+                " failed (%d)\n", index, (int)status);
+        goto finally;
+    }
+    opened = 0;
+    failed = 0;
+
+finally:
+    if (opened && mxlFlowWriterCancelGrain(context->video_writer) != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: cancel video grain %" PRIu64
+                " failed\n", index);
+        failed = -1;
+    }
+    return failed;
+}
+
+static int verify_video_grain(TestContext *context, uint64_t index)
+{
+    mxlGrainInfo grain = {0};
+    uint8_t *payload = NULL;
+    uint8_t expected_byte = (uint8_t)(index % 255);
+    mxlStatus status;
+    size_t i;
+    int failed = -1;
+
+    status = mxlFlowReaderGetGrain(context->video_reader, index,
+                                   VIDEO_READ_TIMEOUT_NS, &grain, &payload);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: read video grain %" PRIu64
+                " failed (%d)\n", index, (int)status);
+        goto finally;
+    }
+    if (grain.index != index || grain.grainSize != context->video_grain_size ||
+        !payload || !grain.totalSlices || grain.validSlices != grain.totalSlices ||
+        (grain.flags & MXL_GRAIN_FLAG_INVALID)) {
+        fprintf(stderr, "mxl_transcode_test: video grain %" PRIu64
+                " metadata mismatch (received index=%" PRIu64
+                ", size=%" PRIu32 ", slices=%u/%u, flags=%" PRIu32 ")\n",
+                index, grain.index, grain.grainSize,
+                grain.validSlices, grain.totalSlices, grain.flags);
+        goto finally;
+    }
+    for (i = 0; i < grain.grainSize; i++) {
+        if (payload[i] != expected_byte) {
+            fprintf(stderr, "mxl_transcode_test: video grain %" PRIu64
+                    " payload mismatch at byte %zu (expected %u, got %u)\n",
+                    index, i, expected_byte, payload[i]);
+            goto finally;
+        }
+    }
+    failed = 0;
+
+finally:
+    return failed;
+}
+
+static int test_video(TestContext *context, const TestOptions *opts)
+{
+    uint64_t index;
+    int frame;
+    int failed = -1;
+
+    for (frame = 0; frame < VIDEO_GRAIN_COUNT; frame++) {
+        index = VIDEO_START_INDEX + frame;
+        if (write_video_grain(context, index))
+            goto finally;
+        if (frame == 0 && open_destination_video(context, opts))
+            goto finally;
+        if (verify_video_grain(context, index))
+            goto finally;
+        if (frame == 0 || (frame + 1) % 10 == 0) {
+            printf("mxl_transcode_test: verified video grain %d/%d at index %"
+                   PRIu64 "\n", frame + 1, VIDEO_GRAIN_COUNT, index);
+            fflush(stdout);
+        }
+    }
+    failed = 0;
+
+finally:
+    return failed;
+}
+
 static int cleanup_test(TestContext *context)
 {
     mxlStatus status;
     int failed = 0;
 
+    if (context->video_reader) {
+        status = mxlReleaseFlowReader(context->destination_instance,
+                                      context->video_reader);
+        if (status != MXL_STATUS_OK) {
+            fprintf(stderr, "mxl_transcode_test: release video reader failed (%d)\n",
+                    (int)status);
+            failed = -1;
+        }
+        context->video_reader = NULL;
+    }
+    if (context->destination_instance) {
+        status = mxlDestroyInstance(context->destination_instance);
+        if (status != MXL_STATUS_OK) {
+            fprintf(stderr, "mxl_transcode_test: destroy destination instance failed (%d)\n",
+                    (int)status);
+            failed = -1;
+        }
+        context->destination_instance = NULL;
+    }
     if (context->video_writer) {
         status = mxlReleaseFlowWriter(context->source_instance,
                                       context->video_writer);
@@ -372,6 +550,10 @@ int main(int argc, char **argv)
            opts.media == MEDIA_VIDEO ? "video" :
            opts.media == MEDIA_AUDIO ? "audio" : "av");
     puts("mxl_transcode_test: destination domain and flows managed by FFmpeg");
+    if (opts.media == MEDIA_VIDEO && test_video(&context, &opts))
+        goto finally;
+    if (opts.media != MEDIA_VIDEO)
+        puts("mxl_transcode_test: media transfer not yet implemented for this mode");
     failed = 0;
 
 finally:
