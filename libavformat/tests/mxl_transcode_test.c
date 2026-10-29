@@ -38,6 +38,34 @@
  * destination must specify the same media types with different flow IDs.
  * The source domain must not already exist and is removed on completion.
  * The destination directory is managed by the external FFmpeg runner.
+ *
+ *
+ * Run FFmpeg concurrently with this test to transcode the source MXL flows
+ * into the destination domain, preserving the original MXL indices.
+ *
+ * To preserve absolute MXL indices through the pipeline, `-copyts`,
+ * `-copytb 1`, and `-avoid_negative_ts disabled` preserve the original
+ * timestamps and time bases, while `-mxl_write_index pts` directs the
+ * MXL muxer to derive its write indices from the packet PTS.
+ *
+ * For example:
+ *
+ * $ mkdir -p "$DST_DOMAIN"
+ * $ ./ffmpeg -hide_banner -loglevel info \
+ *     -f mxl -mxl_read_index_init head \
+ *     -max_audio_samples 48000 -max_audio_samples_per_read 800 \
+ *     -copytb 1 \
+ *     -i "mxl://${SRC_DOMAIN}?id=${SRC_VIDEO_ID}&id=${SRC_AUDIO_ID}" \
+ *     -map 0:v:0 -map 0:a:0 \
+ *     -copyts -c:v copy -c:a copy \
+ *     -avoid_negative_ts disabled \
+ *     -f mxl -mxl_write_index pts \
+ *     -video_flow_id "$DST_VIDEO_ID" \
+ *     -audio_flow_id "$DST_AUDIO_ID" \
+ *     "$DST_DOMAIN"
+ *
+ * Domain paths and flow IDs must match those supplied to mxl_transcode_test.
+ * SRC_DOMAIN and DST_DOMAIN are absolute directory paths.
  */
 
 #include <ctype.h>
@@ -480,8 +508,10 @@ static int test_video(TestContext *context, const TestOptions *opts)
         if (verify_video_grain(context, index))
             goto finally;
         if (frame == 0 || (frame + 1) % 10 == 0) {
-            printf("mxl_transcode_test: verified video grain %d/%d at index %"
-                   PRIu64 "\n", frame + 1, VIDEO_GRAIN_COUNT, index);
+            printf("mxl_transcode_test: video grain %d/%d: "
+                   "wrote source MXL index %" PRIu64 ", "
+                   "verified destination MXL index %" PRIu64 "\n",
+                   frame + 1, VIDEO_GRAIN_COUNT, index, index);
             fflush(stdout);
         }
     }
@@ -683,10 +713,11 @@ static int test_audio(TestContext *context, const TestOptions *opts)
             goto finally;
         if (verify_audio_buffer(context, head_index, count))
             goto finally;
-        printf("mxl_transcode_test: verified audio buffer %zu/%zu "
-               "at head %" PRIu64 "\n",
+        printf("mxl_transcode_test: audio buffer %zu/%zu: "
+               "wrote source MXL head index %" PRIu64 ", "
+               "verified destination MXL head index %" PRIu64 "\n",
                offset / count + 1, (size_t)AUDIO_SAMPLE_COUNT / count,
-               head_index);
+               head_index, head_index);
         fflush(stdout);
     }
     failed = 0;
@@ -713,13 +744,23 @@ static int verify_av_frame(TestContext *context, const TestOptions *opts,
         if (verify_audio_buffer(context, audio_head, count))
             return -1;
         *audio_verified += count;
+        if (*audio_verified == count ||
+            (*audio_verified / count) % 10 == 0 ||
+            *audio_verified == AUDIO_SAMPLE_COUNT) {
+            printf("mxl_transcode_test: A/V audio buffer %zu/%zu: "
+                   "wrote source MXL head index %" PRIu64 ", "
+                   "verified destination MXL head index %" PRIu64 "\n",
+                   *audio_verified / count, (size_t)AUDIO_SAMPLE_COUNT / count,
+                   audio_head, audio_head);
+            fflush(stdout);
+        }
     }
 
     if (frame == 0 || (frame + 1) % 10 == 0) {
-        printf("mxl_transcode_test: verified A/V video grain %d/%d, "
-               "audio samples %zu/%d\n",
-               frame + 1, VIDEO_GRAIN_COUNT, *audio_verified,
-               AUDIO_SAMPLE_COUNT);
+        printf("mxl_transcode_test: A/V video grain %d/%d: "
+               "wrote source MXL index %" PRIu64 ", "
+               "verified destination MXL index %" PRIu64 "\n",
+               frame + 1, VIDEO_GRAIN_COUNT, video_index, video_index);
         fflush(stdout);
     }
     return 0;
