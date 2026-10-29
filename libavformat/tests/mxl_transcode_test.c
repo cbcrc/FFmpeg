@@ -24,9 +24,10 @@
  * Verify that an FFmpeg MXL demuxer-to-muxer stream copy preserves
  * absolute grain/sample indices and media payloads.
  *
- * Phase 2 transfers and verifies 60 video grains via an external FFmpeg
- * stream-copy process. Audio-only and combined A/V tests will follow.
- * FFmpeg creates the destination domain and flows.
+ * Video-only and audio-only operation transfer and verify one second of
+ * media through an external FFmpeg stream-copy process. Combined A/V
+ * verification will follow. FFmpeg creates the destination flows; the
+ * external runner creates the destination domain directory.
  *
  * Usage:
  *   tests/mxl_transcode_test <source_domain>
@@ -36,6 +37,7 @@
  * The source flow options select video, audio, or A/V testing. The
  * destination must specify the same media types with different flow IDs.
  * The source domain must not already exist and is removed on completion.
+ * The destination directory is managed by the external FFmpeg runner.
  */
 
 #include <ctype.h>
@@ -51,11 +53,16 @@
 #include <mxl/mxl.h>
 #include <mxl/flow.h>
 
+#include "libavutil/time.h"
+
 #define DEFAULT_AUDIO_SAMPLES_PER_BUFFER 800
 #define VIDEO_GRAIN_COUNT 60
+#define AUDIO_SAMPLE_COUNT 48000
+#define AUDIO_CHANNELS 2
 #define VIDEO_START_INDEX UINT64_C(1000000)
-#define VIDEO_READ_TIMEOUT_NS UINT64_C(30000000000)
-#define DESTINATION_STARTUP_RETRIES 60
+#define AUDIO_START_INDEX UINT64_C(1000000)
+#define READ_TIMEOUT_NS UINT64_C(30000000000)
+#define DST_STARTUP_RETRIES 60
 
 typedef enum TestMedia {
     MEDIA_VIDEO = 1 << 0,
@@ -98,12 +105,12 @@ static const char audio_flow_template[] =
     "}";
 
 typedef struct TestOptions {
-    const char *source_directory;
-    const char *destination_directory;
-    const char *source_video_id;
-    const char *source_audio_id;
-    const char *destination_video_id;
-    const char *destination_audio_id;
+    const char *src_directory;
+    const char *dst_directory;
+    const char *src_video_id;
+    const char *src_audio_id;
+    const char *dst_video_id;
+    const char *dst_audio_id;
     size_t audio_samples_per_buffer;
     int audio_samples_specified;
     TestMedia media;
@@ -115,12 +122,13 @@ typedef struct TestDomain {
 } TestDomain;
 
 typedef struct TestContext {
-    TestDomain source_domain;
-    mxlInstance source_instance;
+    TestDomain src_domain;
+    mxlInstance src_instance;
     mxlFlowWriter video_writer;
     mxlFlowWriter audio_writer;
-    mxlInstance destination_instance;
+    mxlInstance dst_instance;
     mxlFlowReader video_reader;
+    mxlFlowReader audio_reader;
     uint32_t video_grain_size;
 } TestContext;
 
@@ -152,35 +160,41 @@ static void print_usage(const char *program)
 
 static int validate_options(TestOptions *opts)
 {
-    if (!opts->source_directory || !opts->source_directory[0] ||
-        !opts->destination_directory || !opts->destination_directory[0] ||
-        !strcmp(opts->source_directory, opts->destination_directory)) {
+    if (!opts->src_directory || !opts->src_directory[0] ||
+        !opts->dst_directory || !opts->dst_directory[0] ||
+        !strcmp(opts->src_directory, opts->dst_directory)) {
         fprintf(stderr, "mxl_transcode_test: invalid domain paths\n");
         return -1;
     }
-    if (!opts->source_video_id && !opts->source_audio_id) {
+    if (!opts->src_video_id && !opts->src_audio_id) {
         fprintf(stderr, "mxl_transcode_test: no source flows specified\n");
         return -1;
     }
-    if (!!opts->source_video_id != !!opts->destination_video_id ||
-        !!opts->source_audio_id != !!opts->destination_audio_id) {
+    if (!!opts->src_video_id != !!opts->dst_video_id ||
+        !!opts->src_audio_id != !!opts->dst_audio_id) {
         fprintf(stderr, "mxl_transcode_test: source and destination media must match\n");
         return -1;
     }
-    if (opts->audio_samples_specified && !opts->source_audio_id) {
+    if (opts->audio_samples_specified && !opts->src_audio_id) {
         fprintf(stderr, "mxl_transcode_test: audio buffer size requires audio\n");
         return -1;
     }
-    if ((opts->source_video_id &&
-         !strcmp(opts->source_video_id, opts->destination_video_id)) ||
-        (opts->source_audio_id &&
-         !strcmp(opts->source_audio_id, opts->destination_audio_id))) {
+    if ((opts->src_video_id &&
+         !strcmp(opts->src_video_id, opts->dst_video_id)) ||
+        (opts->src_audio_id &&
+         !strcmp(opts->src_audio_id, opts->dst_audio_id))) {
         fprintf(stderr, "mxl_transcode_test: source and destination flow IDs must differ\n");
         return -1;
     }
 
-    opts->media = (opts->source_video_id ? MEDIA_VIDEO : 0) |
-                  (opts->source_audio_id ? MEDIA_AUDIO : 0);
+    if (opts->src_audio_id && AUDIO_SAMPLE_COUNT % opts->audio_samples_per_buffer) {
+        fprintf(stderr, "mxl_transcode_test: --audio-samples-per-buffer must "
+                "evenly divide %d\n", AUDIO_SAMPLE_COUNT);
+        return -1;
+    }
+
+    opts->media = (opts->src_video_id ? MEDIA_VIDEO : 0) |
+                  (opts->src_audio_id ? MEDIA_AUDIO : 0);
     return 0;
 }
 
@@ -204,35 +218,35 @@ static int parse_options(int argc, char **argv, TestOptions *opts)
     static const char samples_option[] = "--audio-samples-per-buffer=";
     const char *argument;
     const char **flow_id;
-    int is_source = 1;
+    int is_src = 1;
     int failed = -1;
     int i;
 
     opts->audio_samples_per_buffer = DEFAULT_AUDIO_SAMPLES_PER_BUFFER;
     if (argc < 5)
         goto finally;
-    opts->source_directory = argv[1];
+    opts->src_directory = argv[1];
 
     for (i = 2; i < argc; i++) {
         argument = argv[i];
         if (strncmp(argument, "--", 2)) {
-            if (!is_source)
+            if (!is_src)
                 goto finally;
-            opts->destination_directory = argument;
-            is_source = 0;
+            opts->dst_directory = argument;
+            is_src = 0;
         } else if (!strncmp(argument, "--video=", 8)) {
-            flow_id = is_source ? &opts->source_video_id :
-                                  &opts->destination_video_id;
+            flow_id = is_src ? &opts->src_video_id :
+                                  &opts->dst_video_id;
             if (*flow_id || !valid_uuid(argument + 8))
                 goto finally;
             *flow_id = argument + 8;
         } else if (!strncmp(argument, "--audio=", 8)) {
-            flow_id = is_source ? &opts->source_audio_id :
-                                  &opts->destination_audio_id;
+            flow_id = is_src ? &opts->src_audio_id :
+                                  &opts->dst_audio_id;
             if (*flow_id || !valid_uuid(argument + 8))
                 goto finally;
             *flow_id = argument + 8;
-        } else if (is_source &&
+        } else if (is_src &&
                    !strncmp(argument, samples_option, sizeof(samples_option) - 1)) {
             if (opts->audio_samples_specified ||
                 parse_audio_samples(argument + sizeof(samples_option) - 1,
@@ -300,22 +314,22 @@ static int initialize_test(TestContext *context, const TestOptions *opts)
 {
     int failed = -1;
 
-    if (create_domain(&context->source_domain, opts->source_directory))
+    if (create_domain(&context->src_domain, opts->src_directory))
         goto finally;
 
-    context->source_instance = mxlCreateInstance(opts->source_directory, NULL);
-    if (!context->source_instance) {
+    context->src_instance = mxlCreateInstance(opts->src_directory, NULL);
+    if (!context->src_instance) {
         fprintf(stderr, "mxl_transcode_test: create source instance failed\n");
         goto finally;
     }
 
     if ((opts->media & MEDIA_VIDEO) &&
-        create_flow(context->source_instance, video_flow_template,
-                    opts->source_video_id, "video", &context->video_writer))
+        create_flow(context->src_instance, video_flow_template,
+                    opts->src_video_id, "video", &context->video_writer))
         goto finally;
     if ((opts->media & MEDIA_AUDIO) &&
-        create_flow(context->source_instance, audio_flow_template,
-                    opts->source_audio_id, "audio", &context->audio_writer))
+        create_flow(context->src_instance, audio_flow_template,
+                    opts->src_audio_id, "audio", &context->audio_writer))
         goto finally;
 
     failed = 0;
@@ -325,25 +339,25 @@ finally:
 }
 
 
-static int open_destination_video(TestContext *context, const TestOptions *opts)
+static int open_dst_reader(TestContext *context, const TestOptions *opts,
+                           const char *flow_id, const char *media,
+                           mxlFlowReader *reader)
 {
     struct stat st;
     mxlStatus status = MXL_STATUS_OK;
     int attempt;
     int failed = -1;
 
-    printf("mxl_transcode_test: waiting for FFmpeg destination video flow\n");
+    printf("mxl_transcode_test: waiting for FFmpeg destination %s flow\n", media);
     fflush(stdout);
-    for (attempt = 0; attempt < DESTINATION_STARTUP_RETRIES; attempt++) {
-        if (!context->destination_instance &&
-            !stat(opts->destination_directory, &st) && S_ISDIR(st.st_mode)) {
-            context->destination_instance =
-                mxlCreateInstance(opts->destination_directory, NULL);
+    for (attempt = 0; attempt < DST_STARTUP_RETRIES; attempt++) {
+        if (!context->dst_instance &&
+            !stat(opts->dst_directory, &st) && S_ISDIR(st.st_mode)) {
+            context->dst_instance = mxlCreateInstance(opts->dst_directory, NULL);
         }
-        if (context->destination_instance) {
-            status = mxlCreateFlowReader(context->destination_instance,
-                                         opts->destination_video_id, NULL,
-                                         &context->video_reader);
+        if (context->dst_instance) {
+            status = mxlCreateFlowReader(context->dst_instance, flow_id,
+                                         NULL, reader);
             if (status == MXL_STATUS_OK) {
                 failed = 0;
                 goto finally;
@@ -351,9 +365,9 @@ static int open_destination_video(TestContext *context, const TestOptions *opts)
         }
         sleep(1);
     }
-    fprintf(stderr, "mxl_transcode_test: destination video flow unavailable "
+    fprintf(stderr, "mxl_transcode_test: destination %s flow unavailable "
             "after %d retries (last status %d)\n",
-            DESTINATION_STARTUP_RETRIES, (int)status);
+            media, DST_STARTUP_RETRIES, (int)status);
 
 finally:
     return failed;
@@ -417,7 +431,7 @@ static int verify_video_grain(TestContext *context, uint64_t index)
     int failed = -1;
 
     status = mxlFlowReaderGetGrain(context->video_reader, index,
-                                   VIDEO_READ_TIMEOUT_NS, &grain, &payload);
+                                   READ_TIMEOUT_NS, &grain, &payload);
     if (status != MXL_STATUS_OK) {
         fprintf(stderr, "mxl_transcode_test: read video grain %" PRIu64
                 " failed (%d)\n", index, (int)status);
@@ -457,7 +471,8 @@ static int test_video(TestContext *context, const TestOptions *opts)
         index = VIDEO_START_INDEX + frame;
         if (write_video_grain(context, index))
             goto finally;
-        if (frame == 0 && open_destination_video(context, opts))
+        if (frame == 0 && open_dst_reader(context, opts, opts->dst_video_id, "video",
+                                          &context->video_reader))
             goto finally;
         if (verify_video_grain(context, index))
             goto finally;
@@ -473,13 +488,228 @@ finally:
     return failed;
 }
 
+static float expected_audio_sample(uint64_t index, size_t channel)
+{
+    return (float)((index % 255) + 256 * channel);
+}
+
+static int write_audio_buffer(TestContext *context, uint64_t head_index,
+                              size_t count)
+{
+    mxlMutableWrappedMultiBufferSlice buffers = {0};
+    mxlStatus status;
+    size_t samples_written = 0;
+    size_t fragment_index, sample, channel;
+    int opened = 0;
+    int failed = -1;
+
+    status = mxlFlowWriterOpenSamples(context->audio_writer, head_index,
+                                      count, &buffers);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: open audio samples at head %" PRIu64
+                " failed (%d)\n", head_index, (int)status);
+        goto finally;
+    }
+    opened = 1;
+    if (buffers.count != AUDIO_CHANNELS) {
+        fprintf(stderr, "mxl_transcode_test: source audio channel count mismatch\n");
+        goto finally;
+    }
+    for (fragment_index = 0; fragment_index < 2; fragment_index++) {
+        const mxlMutableBufferSlice *fragment =
+            &buffers.base.fragments[fragment_index];
+        size_t fragment_samples;
+
+        if (fragment->size % sizeof(float)) {
+            fprintf(stderr, "mxl_transcode_test: invalid source audio fragment size\n");
+            goto finally;
+        }
+        fragment_samples = fragment->size / sizeof(float);
+        if (!fragment_samples)
+            continue;
+        if (!fragment->pointer || fragment_samples > count - samples_written ||
+            buffers.stride < fragment->size) {
+            fprintf(stderr, "mxl_transcode_test: invalid source audio buffer layout\n");
+            goto finally;
+        }
+        for (channel = 0; channel < AUDIO_CHANNELS; channel++) {
+            uint8_t *data = (uint8_t *)fragment->pointer + channel * buffers.stride;
+            for (sample = 0; sample < fragment_samples; sample++) {
+                float value = expected_audio_sample(
+                    head_index - count + 1 + samples_written + sample, channel);
+                memcpy(data + sample * sizeof(value), &value, sizeof(value));
+            }
+        }
+        samples_written += fragment_samples;
+    }
+    if (samples_written != count) {
+        fprintf(stderr, "mxl_transcode_test: source audio sample count mismatch\n");
+        goto finally;
+    }
+    status = mxlFlowWriterCommitSamples(context->audio_writer);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: commit audio samples at head %" PRIu64
+                " failed (%d)\n", head_index, (int)status);
+        goto finally;
+    }
+    opened = 0;
+    failed = 0;
+
+finally:
+    if (opened && mxlFlowWriterCancelSamples(context->audio_writer) != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: cancel audio samples at head %" PRIu64
+                " failed\n", head_index);
+        failed = -1;
+    }
+    return failed;
+}
+
+/*
+ * The MXL blocking audio reader can time out with TOO_EARLY even when the
+ * requested samples are available and a nonblocking read succeeds.
+ * Until this MXL library issue is resolved, emulate blocking reads by polling
+ * the nonblocking API. USE_MXL_BLOCKING_AUDIO_READ selects the native blocking
+ * API for retesting once the library has been fixed.
+ */
+#define USE_MXL_BLOCKING_AUDIO_READ 0
+#define AUDIO_READ_POLL_INTERVAL_US 10000
+static mxlStatus test_mxlFlowReaderGetSamples(mxlFlowReader reader,
+                                              uint64_t head_index, size_t count,
+                                              uint64_t timeout_ns,
+                                              mxlWrappedMultiBufferSlice *buffers)
+{
+    mxlStatus status;
+
+#if USE_MXL_BLOCKING_AUDIO_READ
+    status = mxlFlowReaderGetSamples(reader, head_index, count,
+                                     timeout_ns, buffers);
+#else
+    int64_t start_us = av_gettime_relative();
+
+    do {
+        status = mxlFlowReaderGetSamplesNonBlocking(reader, head_index,
+                                                    count, buffers);
+        if (status != MXL_ERR_OUT_OF_RANGE_TOO_EARLY ||
+            (uint64_t)(av_gettime_relative() - start_us) >= timeout_ns / 1000)
+            break;
+        av_usleep(AUDIO_READ_POLL_INTERVAL_US);
+    } while (1);
+#endif
+
+    return status;
+}
+
+static int verify_audio_buffer(TestContext *context, uint64_t head_index,
+                               size_t count)
+{
+    mxlWrappedMultiBufferSlice buffers = {0};
+    mxlStatus status;
+    size_t samples_read = 0;
+    size_t fragment_index, sample, channel;
+    int failed = -1;
+
+    status = test_mxlFlowReaderGetSamples(context->audio_reader, head_index,
+                                          count, READ_TIMEOUT_NS, &buffers);
+    if (status != MXL_STATUS_OK) {
+        fprintf(stderr, "mxl_transcode_test: read audio samples at head %" PRIu64
+                " failed (%d)\n", head_index, (int)status);
+        goto finally;
+    }
+    if (buffers.count != AUDIO_CHANNELS) {
+        fprintf(stderr, "mxl_transcode_test: destination audio channel count mismatch\n");
+        goto finally;
+    }
+    for (fragment_index = 0; fragment_index < 2; fragment_index++) {
+        const mxlBufferSlice *fragment = &buffers.base.fragments[fragment_index];
+        size_t fragment_samples;
+
+        if (fragment->size % sizeof(float)) {
+            fprintf(stderr, "mxl_transcode_test: invalid destination audio fragment size\n");
+            goto finally;
+        }
+        fragment_samples = fragment->size / sizeof(float);
+        if (!fragment_samples)
+            continue;
+        if (!fragment->pointer || fragment_samples > count - samples_read ||
+            buffers.stride < fragment->size) {
+            fprintf(stderr, "mxl_transcode_test: invalid destination audio buffer layout\n");
+            goto finally;
+        }
+        for (channel = 0; channel < AUDIO_CHANNELS; channel++) {
+            const uint8_t *data = (const uint8_t *)fragment->pointer +
+                                  channel * buffers.stride;
+            for (sample = 0; sample < fragment_samples; sample++) {
+                uint64_t index = head_index - count + 1 + samples_read + sample;
+                float expected = expected_audio_sample(index, channel);
+                float actual;
+
+                memcpy(&actual, data + sample * sizeof(actual), sizeof(actual));
+                if (actual != expected) {
+                    fprintf(stderr, "mxl_transcode_test: audio mismatch at index %" PRIu64
+                            ", channel %zu (expected %g, got %g)\n",
+                            index, channel, (double)expected, (double)actual);
+                    goto finally;
+                }
+            }
+        }
+        samples_read += fragment_samples;
+    }
+    if (samples_read != count) {
+        fprintf(stderr, "mxl_transcode_test: destination audio sample count mismatch\n");
+        goto finally;
+    }
+    failed = 0;
+
+finally:
+    return failed;
+}
+
+static int test_audio(TestContext *context, const TestOptions *opts)
+{
+    size_t count = opts->audio_samples_per_buffer;
+    size_t offset;
+    uint64_t head_index;
+    int failed = -1;
+
+    for (offset = 0; offset < AUDIO_SAMPLE_COUNT; offset += count) {
+        head_index = AUDIO_START_INDEX + offset + count - 1;
+        if (write_audio_buffer(context, head_index, count))
+            goto finally;
+        if (offset == 0 &&
+            open_dst_reader(context, opts, opts->dst_audio_id, "audio",
+                            &context->audio_reader))
+            goto finally;
+        if (verify_audio_buffer(context, head_index, count))
+            goto finally;
+        printf("mxl_transcode_test: verified audio buffer %zu/%zu "
+               "at head %" PRIu64 "\n",
+               offset / count + 1, (size_t)AUDIO_SAMPLE_COUNT / count,
+               head_index);
+        fflush(stdout);
+    }
+    failed = 0;
+
+finally:
+    return failed;
+}
+
 static int cleanup_test(TestContext *context)
 {
     mxlStatus status;
     int failed = 0;
 
+    if (context->audio_reader) {
+        status = mxlReleaseFlowReader(context->dst_instance,
+                                      context->audio_reader);
+        if (status != MXL_STATUS_OK) {
+            fprintf(stderr, "mxl_transcode_test: release audio reader failed (%d)\n",
+                    (int)status);
+            failed = -1;
+        }
+        context->audio_reader = NULL;
+    }
     if (context->video_reader) {
-        status = mxlReleaseFlowReader(context->destination_instance,
+        status = mxlReleaseFlowReader(context->dst_instance,
                                       context->video_reader);
         if (status != MXL_STATUS_OK) {
             fprintf(stderr, "mxl_transcode_test: release video reader failed (%d)\n",
@@ -488,17 +718,17 @@ static int cleanup_test(TestContext *context)
         }
         context->video_reader = NULL;
     }
-    if (context->destination_instance) {
-        status = mxlDestroyInstance(context->destination_instance);
+    if (context->dst_instance) {
+        status = mxlDestroyInstance(context->dst_instance);
         if (status != MXL_STATUS_OK) {
             fprintf(stderr, "mxl_transcode_test: destroy destination instance failed (%d)\n",
                     (int)status);
             failed = -1;
         }
-        context->destination_instance = NULL;
+        context->dst_instance = NULL;
     }
     if (context->video_writer) {
-        status = mxlReleaseFlowWriter(context->source_instance,
+        status = mxlReleaseFlowWriter(context->src_instance,
                                       context->video_writer);
         if (status != MXL_STATUS_OK) {
             fprintf(stderr, "mxl_transcode_test: release video writer failed (%d)\n",
@@ -508,7 +738,7 @@ static int cleanup_test(TestContext *context)
         context->video_writer = NULL;
     }
     if (context->audio_writer) {
-        status = mxlReleaseFlowWriter(context->source_instance,
+        status = mxlReleaseFlowWriter(context->src_instance,
                                       context->audio_writer);
         if (status != MXL_STATUS_OK) {
             fprintf(stderr, "mxl_transcode_test: release audio writer failed (%d)\n",
@@ -517,16 +747,16 @@ static int cleanup_test(TestContext *context)
         }
         context->audio_writer = NULL;
     }
-    if (context->source_instance) {
-        status = mxlDestroyInstance(context->source_instance);
+    if (context->src_instance) {
+        status = mxlDestroyInstance(context->src_instance);
         if (status != MXL_STATUS_OK) {
             fprintf(stderr, "mxl_transcode_test: destroy source instance failed (%d)\n",
                     (int)status);
             failed = -1;
         }
-        context->source_instance = NULL;
+        context->src_instance = NULL;
     }
-    if (remove_domain(&context->source_domain))
+    if (remove_domain(&context->src_domain))
         failed = -1;
     return failed;
 }
@@ -549,11 +779,13 @@ int main(int argc, char **argv)
     printf("mxl_transcode_test: initialized %s source flow(s)\n",
            opts.media == MEDIA_VIDEO ? "video" :
            opts.media == MEDIA_AUDIO ? "audio" : "av");
-    puts("mxl_transcode_test: destination domain and flows managed by FFmpeg");
+    puts("mxl_transcode_test: destination flows managed by FFmpeg");
     if (opts.media == MEDIA_VIDEO && test_video(&context, &opts))
         goto finally;
-    if (opts.media != MEDIA_VIDEO)
-        puts("mxl_transcode_test: media transfer not yet implemented for this mode");
+    if (opts.media == MEDIA_AUDIO && test_audio(&context, &opts))
+        goto finally;
+    if (opts.media == (MEDIA_VIDEO | MEDIA_AUDIO))
+        puts("mxl_transcode_test: A/V media transfer not yet implemented");
     failed = 0;
 
 finally:
