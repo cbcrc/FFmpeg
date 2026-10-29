@@ -801,6 +801,10 @@ TESTPROGS-$(CONFIG_IMF_DEMUXER)          += imf
 TESTPROGS-$(CONFIG_MXL_DEMUXER)          += mxl_diag mxl_uri mxl_loc mxl_json mxl_demux_test
 TESTPROGS-$(CONFIG_MXL_MUXER)            += mxl_mux_test
 
+ifeq ($(CONFIG_MXL_DEMUXER)$(CONFIG_MXL_MUXER),yesyes)
+TESTPROGS-yes                            += mxl_transcode_test
+endif
+
 TOOLS     = aviocat                                                     \
             ismindex                                                    \
             pktdumper                                                   \
