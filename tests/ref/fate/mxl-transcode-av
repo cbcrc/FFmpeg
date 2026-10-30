@@ -1,0 +1,20 @@
+mxl_transcode_test: initialized av source flow(s)
+mxl_transcode_test: destination flows managed by FFmpeg
+mxl_transcode_test: waiting for FFmpeg destination video flow
+mxl_transcode_test: waiting for FFmpeg destination audio flow
+mxl_transcode_test: A/V audio buffer 1/60: wrote source MXL head index 800000799, verified destination MXL head index 800000799
+mxl_transcode_test: A/V video grain 1/60: wrote source MXL index 1000000, verified destination MXL index 1000000
+mxl_transcode_test: A/V audio buffer 10/60: wrote source MXL head index 800007999, verified destination MXL head index 800007999
+mxl_transcode_test: A/V video grain 10/60: wrote source MXL index 1000009, verified destination MXL index 1000009
+mxl_transcode_test: A/V audio buffer 20/60: wrote source MXL head index 800015999, verified destination MXL head index 800015999
+mxl_transcode_test: A/V video grain 20/60: wrote source MXL index 1000019, verified destination MXL index 1000019
+mxl_transcode_test: A/V audio buffer 30/60: wrote source MXL head index 800023999, verified destination MXL head index 800023999
+mxl_transcode_test: A/V video grain 30/60: wrote source MXL index 1000029, verified destination MXL index 1000029
+mxl_transcode_test: A/V audio buffer 40/60: wrote source MXL head index 800031999, verified destination MXL head index 800031999
+mxl_transcode_test: A/V video grain 40/60: wrote source MXL index 1000039, verified destination MXL index 1000039
+mxl_transcode_test: A/V audio buffer 50/60: wrote source MXL head index 800039999, verified destination MXL head index 800039999
+mxl_transcode_test: A/V video grain 50/60: wrote source MXL index 1000049, verified destination MXL index 1000049
+mxl_transcode_test: A/V audio buffer 60/60: wrote source MXL head index 800047999, verified destination MXL head index 800047999
+mxl_transcode_test: A/V video grain 60/60: wrote source MXL index 1000059, verified destination MXL index 1000059
+mxl_transcode_test: cleanup complete
+mxl_transcode_test: av: PASS

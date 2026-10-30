@@ -1,0 +1,11 @@
+mxl_mux_test: creating MXL domain
+mxl_mux_test: opening audio muxer (PTS-derived write indices)
+mxl_mux_test: initialized MXL flow and native reader
+mxl_mux_test: audio packet duration independence test
+mxl_mux_test: submitting audio packet with duration=0, payload samples=64
+mxl_mux_test: verified 64 audio samples at head 1000063 (payload matches)
+mxl_mux_test: submitting audio packet with duration=32, payload samples=64
+mxl_mux_test: verified 64 audio samples at head 1000127 (payload matches)
+mxl_mux_test: verified audio sample counts independent of duration
+mxl_mux_test: cleanup complete
+mxl_mux_test: audio-duration: PASS

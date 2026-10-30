@@ -1,0 +1,15 @@
+mxl_mux_test: creating MXL domain
+mxl_mux_test: opening audio muxer (PTS-derived write indices)
+mxl_mux_test: initialized MXL flow and native reader
+mxl_mux_test: audio PTS continuity test
+mxl_mux_test: packet 1: writing audio PTS=1000000, samples=64, MXL head index=1000063
+mxl_mux_test: verified 64 audio samples at head 1000063 (2 channels, payload matches)
+mxl_mux_test: packet 2: writing audio PTS=1000064, samples=64, MXL head index=1000127
+mxl_mux_test: verified 64 audio samples at head 1000127 (2 channels, payload matches)
+mxl_mux_test: packet 3: writing audio PTS=1000128, samples=64, MXL head index=1000191
+mxl_mux_test: verified 64 audio samples at head 1000191 (2 channels, payload matches)
+mxl_mux_test: packet 4: writing audio PTS=1000192, samples=64, MXL head index=1000255
+mxl_mux_test: verified 64 audio samples at head 1000255 (2 channels, payload matches)
+mxl_mux_test: verified 4 audio packets (indices, payload)
+mxl_mux_test: cleanup complete
+mxl_mux_test: audio-pts: PASS

@@ -1626,6 +1626,15 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         return AVERROR_EOF;
     }
 
+    samples_this_read = max_samples_per_read;
+    if (p->max_audio_samples > 0) {
+        // Respect max_audio_samples option value by reducing the read size so that the total
+        // number of samples delivered does not exceed the configured limit.
+        samples_this_read = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
+        if (samples_this_read > max_samples_per_read)
+            samples_this_read = max_samples_per_read;
+    }
+
     // init sample index
     if (0 == stream_ctx->flow.audio.mxl_sample_index) {
         switch (p->mxl_read_index_init) {
@@ -1651,13 +1660,11 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             // MXL limits readable audio ring buffer length to half
             // the buffer size. The tail calc must handle
             // max_audio_samples smaller than readableBufLen and, in
-            // that case, align to the final (possibly partial) read
-            // block.
+            // that case, align to the end of the first read block.
             int readableBufLen = (int)(flow_info->config.continuous.bufferLength / 2);
             if (0 < p->max_audio_samples && p->max_audio_samples < readableBufLen) {
-                int rem = p->max_audio_samples % max_samples_per_read;
                 uint64_t start_index = flow_info->runtime.headIndex -
-                    (uint64_t)(p->max_audio_samples - (rem ? rem : max_samples_per_read));
+                    (uint64_t)(p->max_audio_samples - samples_this_read);
                 av_assert0(flow_info->runtime.headIndex >= start_index);
                 stream_ctx->flow.audio.mxl_sample_index = start_index;
             }
@@ -1677,16 +1684,27 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
             goto finally;
         }
 
-        // enforce strictly monotonic MXL sample index relative to last_pts
+        // enforce non-overlapping audio packets after MXL index reinitialization
         if (last_pts != AV_NOPTS_VALUE) {
-            if (last_packet_duration <= 0 || last_pts > INT64_MAX - last_packet_duration) {
-                loge(s, "sanity test failed: invalid last audio packet duration "
-                     "or PTS overflow, cannot enforce sample index monotonicity\n");
+            // Validate the previous audio packet duration.
+            if (last_packet_duration <= 0) {
+                loge(s, "sanity test failed: invalid last audio packet duration\n");
                 exit_status = AVERROR_INVALIDDATA;
                 goto finally;
             }
 
-            const int64_t next_sample_index = last_pts + last_packet_duration;
+            // Prevent integer overflow when calculating the next MXL head index.
+            if (last_pts > INT64_MAX - last_packet_duration ||
+                last_pts + last_packet_duration > INT64_MAX - (samples_this_read - 1)) {
+                loge(s, "sanity test failed: PTS overflow calculating next MXL head index\n");
+                exit_status = AVERROR_INVALIDDATA;
+                goto finally;
+            }
+
+            // Protect against unexpected backward movement of the MXL
+            // read index during reinitialization.
+            const int64_t next_sample_index = last_pts + last_packet_duration +
+                                              samples_this_read - 1;
             if (stream_ctx->flow.audio.mxl_sample_index < next_sample_index) {
                 logv(s, "clamping audio sample index from %"PRIu64" to %"PRId64
                      " to prevent overlapping audio packets\n",
@@ -1694,13 +1712,6 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
                 stream_ctx->flow.audio.mxl_sample_index = next_sample_index;
             }
         }
-    }
-
-    samples_this_read = max_samples_per_read;
-    if (p->max_audio_samples > 0) {
-        samples_this_read = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
-        if (samples_this_read > max_samples_per_read)
-            samples_this_read = max_samples_per_read;
     }
 
     mxlWrappedMultiBufferSlice payload = {0};
@@ -1801,13 +1812,15 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
         goto finally;
     }
 
-    // next FFmpeg PTS is the MXL sample index
-    if (stream_ctx->flow.audio.mxl_sample_index > INT64_MAX) {
-        loge(s, "MXL audio sample index exceeds INT64_MAX\n");
+    // MXL index identifies the last sample; FFmpeg PTS identifies the first.
+    if (stream_ctx->flow.audio.mxl_sample_index < (uint64_t)(samples_this_read - 1) ||
+        stream_ctx->flow.audio.mxl_sample_index > INT64_MAX) {
+        loge(s, "MXL audio sample index cannot represent first-sample PTS\n");
         exit_status = AVERROR_INVALIDDATA;
         goto finally;
     }
-    int64_t next_pts = stream_ctx->flow.audio.mxl_sample_index;
+    int64_t next_pts = (int64_t)stream_ctx->flow.audio.mxl_sample_index -
+                       (samples_this_read - 1);
 
     // monotonic pts sanity check
     av_assert0(next_pts >= 0 &&
@@ -1835,9 +1848,15 @@ static int read_audio_packet(AVFormatContext *s, AVStream *st, AVPacket *pkt,
          payload.base.fragments[0].pointer,
          payload.base.fragments[1].size > 0 ? payload.base.fragments[1].pointer : NULL);
 
-    // all good, advance the sample index
-    stream_ctx->flow.audio.mxl_sample_index += samples_this_read;
+    // all good, advance to the head index of the next read
     stream_ctx->flow.audio.sample_point_count += samples_this_read;
+    int samples_next_read = max_samples_per_read;
+    if (p->max_audio_samples > 0) {
+        int remaining = p->max_audio_samples - stream_ctx->flow.audio.sample_point_count;
+        if (samples_next_read > remaining)
+            samples_next_read = remaining;
+    }
+    stream_ctx->flow.audio.mxl_sample_index += samples_next_read;
 
     exit_status = 0;
 
