@@ -717,7 +717,7 @@ static void *test_server_thread_main(void *arg)
         return NULL;
     }
 
-    static uint64_t base_index = 0;
+    uint64_t base_index = 0;
     bool stop = false;
     do {
         usleep(1000000/FPS);
@@ -1399,37 +1399,53 @@ static int run_synchronous_tests(void)
     return check_open_fds_match_startup();
 }
 
-static int run_asynchronous_tests(void)
+static int run_asynchronous_test(const char *server_path,
+                                 int (*test)(const char *))
 {
-    int rc = -1;
-    const char* server_path = TEST_DIR "/async.server.sock";
-
     server_thread instr_thread = {0};
-    rc = test_server_thread_start(&instr_thread, server_path);
+    int rc = test_server_thread_start(&instr_thread, server_path);
+    int cleanup_rc;
+
     if (rc) {
         fprintf(stderr, "test server thread start failed (%d)\n", rc);
-        return rc;
+        goto finally;
     }
 
-    rc = test_client_print_messages(server_path);
-    if (rc)
-        return rc;
+    rc = test(server_path);
 
-    rc = test_client_multi_connect(server_path);
-    if (rc)
-        return rc;
-
-    rc = test_client_malformed(server_path);
-    if (rc)
-        return rc;
-
-    rc = test_server_thread_stop(&instr_thread);
-    if (rc)
-        return rc;
+finally:
+    if (instr_thread.started) {
+        cleanup_rc = test_server_thread_stop(&instr_thread);
+        if (cleanup_rc) {
+            fprintf(stderr, "test server thread stop failed (%d)\n", cleanup_rc);
+            if (!rc)
+                rc = cleanup_rc;
+        }
+    }
 
     unlink(server_path);
 
-    return check_open_fds_match_startup();
+    cleanup_rc = check_open_fds_match_startup();
+    if (!rc)
+        rc = cleanup_rc;
+
+    return rc;
+}
+
+static int run_asynchronous_tests(void)
+{
+    int rc;
+    const char* server_path = TEST_DIR "/async.server.sock";
+
+    rc = run_asynchronous_test(server_path, test_client_print_messages);
+    if (rc)
+        return rc;
+
+    rc = run_asynchronous_test(server_path, test_client_multi_connect);
+    if (rc)
+        return rc;
+
+    return run_asynchronous_test(server_path, test_client_malformed);
 }
 
 int main(void)
