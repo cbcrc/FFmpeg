@@ -1,0 +1,12 @@
+mxl_transcode_test: initialized audio source flow(s)
+mxl_transcode_test: destination flows managed by FFmpeg
+mxl_transcode_test: waiting for FFmpeg destination audio flow
+mxl_transcode_test: audio buffer 1/60: wrote source MXL head index 800000799, verified destination MXL head index 800000799
+mxl_transcode_test: audio buffer 10/60: wrote source MXL head index 800007999, verified destination MXL head index 800007999
+mxl_transcode_test: audio buffer 20/60: wrote source MXL head index 800015999, verified destination MXL head index 800015999
+mxl_transcode_test: audio buffer 30/60: wrote source MXL head index 800023999, verified destination MXL head index 800023999
+mxl_transcode_test: audio buffer 40/60: wrote source MXL head index 800031999, verified destination MXL head index 800031999
+mxl_transcode_test: audio buffer 50/60: wrote source MXL head index 800039999, verified destination MXL head index 800039999
+mxl_transcode_test: audio buffer 60/60: wrote source MXL head index 800047999, verified destination MXL head index 800047999
+mxl_transcode_test: cleanup complete
+mxl_transcode_test: audio: PASS
