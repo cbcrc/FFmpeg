@@ -699,7 +699,8 @@ finally:
 static int test_audio(TestContext *context, const TestOptions *opts)
 {
     size_t count = opts->audio_samples_per_buffer;
-    size_t offset;
+    size_t total_buffers = AUDIO_SAMPLE_COUNT / count;
+    size_t offset, buffer_count = 0;
     uint64_t head_index;
     int failed = -1;
 
@@ -713,19 +714,22 @@ static int test_audio(TestContext *context, const TestOptions *opts)
             goto finally;
         if (verify_audio_buffer(context, head_index, count))
             goto finally;
-        printf("mxl_transcode_test: audio buffer %zu/%zu: "
-               "wrote source MXL head index %" PRIu64 ", "
-               "verified destination MXL head index %" PRIu64 "\n",
-               offset / count + 1, (size_t)AUDIO_SAMPLE_COUNT / count,
-               head_index, head_index);
-        fflush(stdout);
+
+        buffer_count++;
+        if (buffer_count == 1 || buffer_count % 10 == 0 ||
+            buffer_count == total_buffers) {
+            printf("mxl_transcode_test: audio buffer %zu/%zu: "
+                   "wrote source MXL head index %" PRIu64 ", "
+                   "verified destination MXL head index %" PRIu64 "\n",
+                   buffer_count, total_buffers, head_index, head_index);
+            fflush(stdout);
+        }
     }
     failed = 0;
 
 finally:
     return failed;
 }
-
 
 /* Verify completed A/V data while keeping the producer ahead of the reader. */
 static int verify_av_frame(TestContext *context, const TestOptions *opts,
