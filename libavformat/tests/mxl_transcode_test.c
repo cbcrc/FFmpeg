@@ -39,7 +39,6 @@
  * The source domain must not already exist and is removed on completion.
  * The destination directory is managed by the external FFmpeg runner.
  *
- *
  * Run FFmpeg concurrently with this test to transcode the source MXL flows
  * into the destination domain, preserving the original MXL indices.
  *
@@ -92,7 +91,6 @@
 #define VIDEO_START_INDEX UINT64_C(1000000)
 #define AUDIO_START_INDEX UINT64_C(800000000)
 #define READ_TIMEOUT_NS UINT64_C(30000000000)
-#define AUDIO_READ_POLL_INTERVAL_US 10000
 #define DST_STARTUP_RETRIES 60
 
 typedef enum TestMedia {
@@ -605,6 +603,7 @@ finally:
  * API for retesting once the library has been fixed.
  */
 #define USE_MXL_BLOCKING_AUDIO_READ 0
+#define AUDIO_READ_POLL_INTERVAL_US 10000
 static mxlStatus test_mxlFlowReaderGetSamples(mxlFlowReader reader,
                                               uint64_t head_index, size_t count,
                                               uint64_t timeout_ns,
