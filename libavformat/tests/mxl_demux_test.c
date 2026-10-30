@@ -357,9 +357,11 @@ finally:
     return failed;
 }
 
-/* Write audio samples in the half-open interval [start, end).  The
- * end index is exclusive. Split writes into chunks of at most
- * max_samples samples.
+/*
+ * Write audio over the PTS interval [start, end), where start is the
+ * first sample's PTS and end is exclusive.
+ * Split into chunks of at most max_samples samples, converting each
+ * chunk's starting PTS to the MXL head index (last sample index).
  */
 static int write_audio(mxlFlowWriter writer, uint64_t start, uint64_t end,
                        size_t max_samples)
@@ -368,16 +370,17 @@ static int write_audio(mxlFlowWriter writer, uint64_t start, uint64_t end,
         mxlMutableWrappedMultiBufferSlice payload = {0};
         uint64_t remaining = end - start;
         size_t count = remaining > max_samples ? max_samples : (size_t)remaining;
+        uint64_t head_index = start + count - 1;
         size_t expected = count * sizeof(float);
         size_t channel, fragment;
         mxlStatus status;
         int opened = 0;
         int failed = -1;
 
-        status = mxlFlowWriterOpenSamples(writer, start, count, &payload);
+        status = mxlFlowWriterOpenSamples(writer, head_index, count, &payload);
         if (status != MXL_STATUS_OK) {
-            fprintf(stderr, "mxl_demux_test: open audio samples %" PRIu64
-                    " failed (%d)\n", start, (int)status);
+            fprintf(stderr, "mxl_demux_test: open audio samples at head index %" PRIu64
+                    " failed (%d)\n", head_index, (int)status);
             goto finally;
         }
         opened = 1;
@@ -404,8 +407,8 @@ static int write_audio(mxlFlowWriter writer, uint64_t start, uint64_t end,
         }
         status = mxlFlowWriterCommitSamples(writer);
         if (status != MXL_STATUS_OK) {
-            fprintf(stderr, "mxl_demux_test: commit audio samples %" PRIu64
-                    " failed (%d)\n", start, (int)status);
+            fprintf(stderr, "mxl_demux_test: commit audio samples at head index %" PRIu64
+                    " failed (%d)\n", head_index, (int)status);
             goto finally;
         }
         opened = 0;
@@ -450,7 +453,6 @@ typedef struct ReadState {
     unsigned last_before_count;           // Stream packet count at that read
     int64_t first_after_pts;              // First interrupted PTS after recovery
     unsigned recovered_packets;           // Interrupted packets received after recovery
-    int recovery_logging;                 // Enable verbose recovery logging
     double pair_difference_ms;            // First audio minus video timestamp difference
     int64_t first_interrupted_pts;        // First eligible interrupted packet PTS
     unsigned first_interrupted_read;      // Read number of first interrupted packet
@@ -653,7 +655,6 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
             unsigned count = video ? state->video_packets : state->audio_packets;
 
             state->first_after_pts = pts;
-            state->recovery_logging = 0;
             after_ms = packet_time_ms(context, packet->stream_index, pts);
             printf("mxl_demux_test: first %s packet after recovery: "
                    "%s=%" PRId64 " PTS=%.3f ms (read #%u, %s #%u)\n",
@@ -727,9 +728,6 @@ static int check_packet(ReadState *state, const AVFormatContext *context,
  * EAGAIN results. EAGAIN indicates that no packet is currently available
  * and is not treated as an error. Successful reads reset the EAGAIN count.
  *
- * Temporarily enable verbose demuxer logging during interruption
- * recovery, restoring the previous log level after each read.
- *
  * Return 0 on success, or -1 on allocation, read, or validation failure.
  */
 static int read_available(AVFormatContext *context, ReadState *state,
@@ -743,16 +741,7 @@ static int read_available(AVFormatContext *context, ReadState *state,
     if (!packet)
         return -1;
     for (attempts = 0; attempts < 32 && empty < 4; attempts++) {
-        int level;
-        int rc;
-
-        if (state->recovery_logging) {
-            level = av_log_get_level();
-            av_log_set_level(AV_LOG_VERBOSE);
-        }
-        rc = av_read_frame(context, packet);
-        if (state->recovery_logging)
-            av_log_set_level(level);
+        int rc = av_read_frame(context, packet);
         if (rc == AVERROR(EAGAIN)) {
             empty++;
             continue;
@@ -971,7 +960,6 @@ static int test_interruption(TestSource *source, AVFormatContext *context,
                    interrupt_video ? "video" : "audio",
                    interrupt_video ? "grain" : "sample",
                    interrupt_video ? index : (uint64_t)audio_index(index));
-            reader.recovery_logging = 1;
         }
         if (!(interrupted && interrupt_video) &&
             write_video(source->video, index))
@@ -1019,6 +1007,8 @@ int main(int argc, char **argv)
     AVFormatContext *context = NULL;
     TestScenario scenario;
     int failed = 0;
+
+    av_log_set_level(AV_LOG_ERROR);
 
     if (argc != 3 || argv[1][0] != '/' || !argv[1][1] ||
         (strcmp(argv[2], "delayed-audio") &&

@@ -283,3 +283,130 @@ $(FATE_MXL_DEMUX): | $(MXL_REL_TMP_DIR)
 
 .PHONY: fate-mxl-demux
 fate-mxl-demux: $(FATE_MXL_DEMUX)
+
+# MXL muxer PTS-derived write index regression tests
+
+define MXL_MUX_FATE_TEST
+fate-mxl-mux-$(1): libavformat/tests/mxl_mux_test$(EXESUF)
+fate-mxl-mux-$(1): CMD = run libavformat/tests/mxl_mux_test$(EXESUF) $(MXL_TMP_DIR)/mux-$(1) $(1)
+fate-mxl-mux-$(1): REF = $(SRC_PATH)/tests/ref/fate/mxl-mux-$(1)
+FATE-$$(CONFIG_MXL_MUXER) += fate-mxl-mux-$(1)
+endef
+
+MXL_MUX_TESTS := video-pts audio-pts video-discontinuity audio-discontinuity \
+                 video-missing-pts audio-missing-pts video-negative-pts audio-negative-pts \
+		 audio-duration audio-invalid-size
+
+$(foreach test,$(MXL_MUX_TESTS),$(eval $(call MXL_MUX_FATE_TEST,$(test))))
+
+FATE_MXL_MUX := $(addprefix fate-mxl-mux-,$(MXL_MUX_TESTS))
+
+$(FATE_MXL_MUX): | $(MXL_REL_TMP_DIR)
+
+.PHONY: fate-mxl-mux
+fate-mxl-mux: $(FATE_MXL_MUX)
+
+
+# MXL demuxer-to-muxer absolute-index preservation regression tests
+
+MXL_TRANSCODE_SRC_VIDEO_FLOW_ID := b02f6c84-e174-48b3-9adc-3993ac5937d3
+MXL_TRANSCODE_SRC_AUDIO_FLOW_ID := 0d809e0b-87c1-4202-80d8-6927bd082ddc
+MXL_TRANSCODE_DST_VIDEO_FLOW_ID := 145bc625-d7d8-47b9-b9bc-9bd1bfd49ab8
+MXL_TRANSCODE_DST_AUDIO_FLOW_ID := 77fee0d7-c1f5-4eb5-8bff-a0fe7cff2e71
+MXL_TRANSCODE_FLOW_TIMEOUT_MS := 5000
+MXL_TRANSCODE_AUDIO_SAMPLES := 48000
+MXL_TRANSCODE_AUDIO_SAMPLES_PER_READ := 800
+
+# Usage: $(call MXL_TRANSCODE_TEST,<test-name>,<source-options>,<destination-options>,<source-flow-ids>,<input-flow-ids>,<stream-maps>,<output-flow-options>)
+#
+# Start the native test, wait for each source flow to become active, then
+# stream-copy with FFmpeg. Only native test output is passed to FATE;
+# FFmpeg and readiness diagnostics remain in the per-test directory.
+define MXL_TRANSCODE_TEST
+    ( \
+        set -e; \
+        export MXL_LOG_LEVEL=off; \
+        TEST_DIR="$(MXL_TMP_DIR)/transcode-$(strip $(1))"; \
+        rm -rf "$$TEST_DIR"; \
+        mkdir -p "$$TEST_DIR/dst"; \
+        cd "$$TEST_DIR"; \
+        $(TARGET_PATH)/libavformat/tests/mxl_transcode_test$(EXESUF) \
+            "$$TEST_DIR/src" $(2) "$$TEST_DIR/dst" $(3) \
+            > "$$TEST_DIR/transcode.log" 2>&1 & \
+        TEST_PID=$$!; \
+        FFMPEG_PID=; \
+        trap "kill $$TEST_PID $$FFMPEG_PID 2>/dev/null || true" INT TERM EXIT; \
+        for FLOW_ID in $(4); do \
+            if ! $(TARGET_PATH)/libavformat/tests/mxl_is_flow_active$(EXESUF) \
+                    "$$TEST_DIR/src" "$$FLOW_ID" $(MXL_TRANSCODE_FLOW_TIMEOUT_MS) \
+                    >> "$$TEST_DIR/wait_flow.log" 2>&1; then \
+                kill $$TEST_PID 2>/dev/null || true; \
+                wait $$TEST_PID 2>/dev/null || true; \
+                cat "$$TEST_DIR/transcode.log"; \
+                exit 1; \
+            fi; \
+        done; \
+        $(TARGET_PATH)/ffmpeg -hide_banner -loglevel info \
+            -f mxl -mxl_read_index_init head \
+            -max_audio_samples $(MXL_TRANSCODE_AUDIO_SAMPLES) \
+            -max_audio_samples_per_read $(MXL_TRANSCODE_AUDIO_SAMPLES_PER_READ) \
+            -copytb 1 -i "mxl://$$TEST_DIR/src?id=$(strip $(5))" \
+            $(6) -copyts -c:v copy -c:a copy \
+            -avoid_negative_ts disabled -f mxl -mxl_write_index pts \
+            $(7) "$$TEST_DIR/dst" > "$$TEST_DIR/ffmpeg.log" 2>&1 & \
+        FFMPEG_PID=$$!; \
+        set +e; \
+        wait $$FFMPEG_PID; \
+        FFMPEG_STATUS=$$?; \
+        wait $$TEST_PID; \
+        TEST_STATUS=$$?; \
+        cat "$$TEST_DIR/transcode.log"; \
+        if [ $$FFMPEG_STATUS -ne 0 ] || [ $$TEST_STATUS -ne 0 ]; then exit 1; fi; \
+        trap - INT TERM EXIT; \
+    )
+endef
+
+FATE_MXL_TRANSCODE := fate-mxl-transcode-video fate-mxl-transcode-audio fate-mxl-transcode-av
+
+$(FATE_MXL_TRANSCODE): libavformat/tests/mxl_transcode_test$(EXESUF) \
+                      libavformat/tests/mxl_is_flow_active$(EXESUF)
+$(FATE_MXL_TRANSCODE): | $(MXL_REL_TMP_DIR)
+
+fate-mxl-transcode-video: CMD = \
+    $(call MXL_TRANSCODE_TEST, \
+        video, \
+        --video=$(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID), \
+        --video=$(MXL_TRANSCODE_DST_VIDEO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID), \
+        -map 0:v:0, \
+        -video_flow_id $(MXL_TRANSCODE_DST_VIDEO_FLOW_ID))
+fate-mxl-transcode-video: REF = $(SRC_PATH)/tests/ref/fate/mxl-transcode-video
+
+fate-mxl-transcode-audio: CMD = \
+    $(call MXL_TRANSCODE_TEST, \
+        audio, \
+        --audio=$(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        --audio=$(MXL_TRANSCODE_DST_AUDIO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        -map 0:a:0, \
+        -audio_flow_id $(MXL_TRANSCODE_DST_AUDIO_FLOW_ID))
+fate-mxl-transcode-audio: REF = $(SRC_PATH)/tests/ref/fate/mxl-transcode-audio
+
+fate-mxl-transcode-av: CMD = \
+    $(call MXL_TRANSCODE_TEST, \
+        av, \
+        --video=$(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID) --audio=$(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        --video=$(MXL_TRANSCODE_DST_VIDEO_FLOW_ID) --audio=$(MXL_TRANSCODE_DST_AUDIO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID) $(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        $(MXL_TRANSCODE_SRC_VIDEO_FLOW_ID)&id=$(MXL_TRANSCODE_SRC_AUDIO_FLOW_ID), \
+        -map 0:v:0 -map 0:a:0, \
+        -video_flow_id $(MXL_TRANSCODE_DST_VIDEO_FLOW_ID) -audio_flow_id $(MXL_TRANSCODE_DST_AUDIO_FLOW_ID))
+fate-mxl-transcode-av: REF = $(SRC_PATH)/tests/ref/fate/mxl-transcode-av
+
+FATE-yes += $(if $(filter yes,$(CONFIG_MXL_DEMUXER)), \
+            $(if $(filter yes,$(CONFIG_MXL_MUXER)),$(FATE_MXL_TRANSCODE)))
+
+.PHONY: fate-mxl-transcode
+fate-mxl-transcode: $(FATE_MXL_TRANSCODE)
