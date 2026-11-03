@@ -346,8 +346,8 @@ define MXL_TRANSCODE_TEST
                 exit 1; \
             fi; \
         done; \
-        $(TARGET_PATH)/ffmpeg -hide_banner -loglevel info \
-            -f mxl -mxl_read_index_init head \
+        $(TARGET_PATH)/ffmpeg -hide_banner -loglevel debug \
+            -f mxl -mxl_read_index_init head -on_too_late reset \
             -max_audio_samples $(MXL_TRANSCODE_AUDIO_SAMPLES) \
             -max_audio_samples_per_read $(MXL_TRANSCODE_AUDIO_SAMPLES_PER_READ) \
             -copytb 1 -i "mxl://$$TEST_DIR/src?id=$(strip $(5))" \
